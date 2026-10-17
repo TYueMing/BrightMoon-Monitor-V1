@@ -1,0 +1,10 @@
+# Keep checksummed third-party texts and curated resources byte-for-byte.
+# Windows automatic newline conversion must not invalidate the manifest.
+packaging/licenses/** -text -whitespace
+packaging/languages/** -text -whitespace
+packaging/assets/** -text -whitespace
+*.png binary
+*.ico binary
+*.mp3 binary
+*.gif binary
+*.zip binary

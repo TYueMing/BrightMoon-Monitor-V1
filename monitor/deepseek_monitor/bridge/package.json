@@ -1,0 +1,11 @@
+{
+  "name": "@brightmoon/deepseek-monitor-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "exports": {".": "./index.mjs", "./cordis.patch.yml": "./cordis.patch.yml", "./package.json": "./package.json"},
+  "files": ["*.mjs", "cordis.patch.yml"],
+  "dsh": {"bundle": {"patch": "./cordis.patch.yml"}},
+  "scripts": {"test": "node --test ../tests/bridge.test.mjs"}
+}

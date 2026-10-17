@@ -1,0 +1,4 @@
+# Windows x64 / CPython 3.13 release baseline, 2026-10-16.
+Pillow==12.3.0
+zstandard==0.25.0
+websocket-client==1.9.2

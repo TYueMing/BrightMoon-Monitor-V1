@@ -1,0 +1,8 @@
+{
+  "name": "Bright Moon Monitor (Solo)",
+  "executable": "MonitorSolo",
+  "version": "0.1.0",
+  "publisher": "Tao Yueming",
+  "python": "3.13.16",
+  "architecture": "AMD64"
+}

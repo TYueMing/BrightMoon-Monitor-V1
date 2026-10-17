@@ -1,0 +1,3 @@
+- insert:
+    - id: brightmoon-deepseek-monitor-bridge
+      name: '@brightmoon/deepseek-monitor-bridge'

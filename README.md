@@ -143,6 +143,75 @@ Solo 不包含这些 Agent 本身，也不提供它们的账号、模型服务�
 
 升级安装保留个人数据和自启选择。在 Windows「已安装的应用」或开始菜单卸载入口中卸载；默认保留个人数据，交互卸载时可选择删除。卸载不会删除被监控 Agent 的程序或会话。如安装过 DeepSeek 交互桥，请按使用说明先移除桥接，再卸载 Solo。
 
+## 源码运行与架构
+
+仓库现在同时提供安装包和 **Solo 独立源码**。源码根目录就是本仓库根目录，不需要下载 BrightMoon 主工程或使用开发者的 Python 环境。完整职责说明与扩展入口见 [源码架构指南](docs/SOURCE_GUIDE.md)。
+
+### 从源码启动
+
+需要 Windows x64、Python 3.10+（含 Tkinter），推荐官方 Python。当前发行构建与源码检查使用 CPython 3.13.16。
+
+```powershell
+git clone https://github.com/TYueMing/BrightMoon-Monitor-V1.git
+cd BrightMoon-Monitor-V1
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe run.py
+```
+
+创建环境并安装依赖后也可双击 `start.cmd`。运行依赖只有 **Pillow、zstandard、websocket-client**；SQLite、Tkinter 等由 Python 提供。源码启动会建立自己的 `data/`，不会携带开发者的配置或任务。没有 `py` 启动器时，可使用自己的 Python 路径创建环境。
+
+### 目录与职责
+
+```text
+run.py / start.cmd            启动入口
+monitor/
+  app.py                      应用装配、快照合并、操作分流
+  settings.py                 配置校验与持久化
+  UI/                         共享胶囊、动画、任务圈、个性化
+    tasks/                    待办列表、编辑器、详情卡片
+  src/                        来源汇总、任务身份、去重、托盘、自启、路径
+  codex_monitor/              Codex 日志 / App Server / 私有详情
+  deepseek_monitor/           Harness 日志 / 可选交互桥 / 私有详情
+  opencode_monitor/           OpenCode 数据库 / 实时服务 / 私有详情
+  tasks/                      本地待办存储、调度与提醒
+  music/play/                 音频枚举、试听与播放
+  icon_asset/                 应用与来源图标
+tests/                        Python 回归测试与预览生成器
+docs/                         使用、接入与架构文档
+packaging/                    构建脚本、资源清单、依赖锁与许可证
+```
+
+```mermaid
+flowchart LR
+    Sources[Agent 日志 / 数据库 / 实时服务] --> Adapters[来源适配器]
+    Adapters --> Hub[SourceHub 独立来源线程]
+    Hub --> App[MonitorApp 合并快照]
+    Tasks[TaskService 本地提醒] --> App
+    App --> Island[共享灵动岛 UI]
+    History[任务生命周期 / 持久去重] <--> Island
+    Island --> Panels[按来源选择第二 / 三态详情]
+    Panels --> Commands[用户操作分流]
+    Commands -->|校验当前操作能力| Hub
+    Hub -->|审批 / 回答 / 停止| Adapters
+    Commands -->|忽略 / 已知晓| Tasks
+```
+
+共享 UI 负责形态、动画与任务切换；各来源适配器负责解析和通信，专属面板负责展示。交互命令重新核对当前任务和可用动作，日志读取不会赋予审批能力。本地待办有独立存储与操作接口，不会把提醒按钮转成 Agent 命令。
+
+### 测试与数据边界
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest tests -q
+# 可选交互桥测试，需要 Node.js 20+
+node --test monitor/deepseek_monitor/tests/bridge.test.mjs
+```
+
+源码包含必要的图标、音频、构建默认资源和测试；**不上传个人 `data/`、账号配置、任务数据库、会话、日志、虚拟环境或下载缓存**。源码模式的数据保存在根目录 `data/`，安装版仍使用 Windows 用户数据目录。挂件和角色可自行添加；源码启动不导入开发者的图片选择。
+
+`packaging/vendor/` 不在仓库中，重新打包需按 [构建指南](docs/WINDOWS_PACKAGING.md) 准备依赖和工具。源码公开不等于已选择开源许可证；第三方组件与资源说明见 [THIRD_PARTY_NOTICES](packaging/THIRD_PARTY_NOTICES.md)。
+
 ## SHA256SUMS.txt 是什么？
 
 它是下载文件的**指纹清单**。文件内容发生变化，计算出的 SHA-256 通常也会变化，因此可以用来检查下载是否完整、是否与发布者提供的文件一致。它不是运行程序需要的依赖，不需要安装或双击执行。

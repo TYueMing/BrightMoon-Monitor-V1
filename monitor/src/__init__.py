@@ -1,0 +1,1 @@
+"""Standalone Monitor Solo runtime."""

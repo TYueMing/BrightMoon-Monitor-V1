@@ -1,0 +1,5 @@
+-r runtime.in
+pip==26.2.1
+setuptools==84.0.0
+pyinstaller==6.22.3
+pytest==9.1.1

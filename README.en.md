@@ -145,6 +145,75 @@ Paste this path into File Explorer's address bar. To back up your data, exit Sol
 
 Upgrades retain personal data and the startup preference. Uninstall from Windows Installed Apps or the Start menu uninstall entry. Personal data is retained by default; interactive uninstall offers an option to delete it. Uninstalling Solo does not remove monitored Agents or their sessions. If you installed the DeepSeek interaction bridge, follow the user guide to remove that bridge before uninstalling Solo.
 
+## Run from source and explore the architecture
+
+This repository now includes both the installer archive and **standalone Solo source code**. The repository root is the source root; no BrightMoon parent project or developer-specific Python environment is needed. A [detailed source guide](docs/SOURCE_GUIDE.md) is available in Chinese.
+
+### Run from source
+
+Use Windows x64 and Python 3.10+ with Tkinter, preferably an official Python installation. The current release build and source checks use CPython 3.13.16.
+
+```powershell
+git clone https://github.com/TYueMing/BrightMoon-Monitor-V1.git
+cd BrightMoon-Monitor-V1
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe run.py
+```
+
+After creating the environment and installing dependencies, you can also double-click `start.cmd`. Runtime dependencies are **Pillow, zstandard, and websocket-client**; Python provides SQLite, Tkinter, and other standard-library components. Source mode creates its own `data/` directory with no developer settings or tasks. If the `py` launcher is unavailable, use your Python executable's path to create the environment.
+
+### Layout and responsibilities
+
+```text
+run.py / start.cmd            Entry points
+monitor/
+  app.py                      Application wiring, snapshots, command routing
+  settings.py                 Configuration validation and persistence
+  UI/                         Shared capsule, animations, task strip, settings
+    tasks/                    Reminder list, editor, and detail card
+  src/                        Source hub, identity, history, tray, startup, paths
+  codex_monitor/              Codex logs, App Server, and source-specific panel
+  deepseek_monitor/           Harness logs, optional bridge, and detail panel
+  opencode_monitor/           OpenCode database, live service, and detail panel
+  tasks/                      Local reminder storage, scheduling, and lifecycle
+  music/play/                 Sound discovery, preview, and playback
+  icon_asset/                 Application and source icons
+tests/                        Python regression tests and preview generators
+docs/                         Usage, integration, and architecture documentation
+packaging/                    Build scripts, resource lists, locks, and licenses
+```
+
+```mermaid
+flowchart LR
+    Sources[Agent logs / databases / live services] --> Adapters[Source adapters]
+    Adapters --> Hub[SourceHub independent workers]
+    Hub --> App[MonitorApp merged snapshot]
+    Tasks[TaskService local reminders] --> App
+    App --> Island[Shared island UI]
+    History[Task lifecycle / persistent history] <--> Island
+    Island --> Panels[Source-specific expanded panels]
+    Panels --> Commands[User command routing]
+    Commands -->|Validate current capabilities| Hub
+    Hub -->|Approve / answer / stop| Adapters
+    Commands -->|Snooze / acknowledge| Tasks
+```
+
+The shared UI handles island states, animation, and task switching. Adapters parse source data and communicate with Agents; source-specific panels render their details. Commands recheck the current task and available actions. Reading logs does not grant approval capability. Local reminders have separate storage and commands, so reminder buttons never become Agent commands.
+
+### Tests and data boundaries
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pytest tests -q
+# Optional interaction bridge tests; requires Node.js 20+
+node --test monitor/deepseek_monitor/tests/bridge.test.mjs
+```
+
+The source includes required icons, sounds, curated build resources, and tests. **Personal data, account settings, task databases, sessions, logs, virtual environments, and download caches are excluded.** Source mode writes to the root `data/` directory; installed mode uses the Windows user data directory. Add your own pendant and idle-character images; source startup does not import the developer's image selections.
+
+The repository does not contain `packaging/vendor/`. Rebuilding an installer requires preparing dependencies and tools as described in the [build guide](docs/WINDOWS_PACKAGING.md), currently in Chinese. Publishing source does not itself assign an open-source license. See [THIRD_PARTY_NOTICES](packaging/THIRD_PARTY_NOTICES.md) for component licenses and resource attribution.
+
 ## What is SHA256SUMS.txt?
 
 It is a list of **file fingerprints**. Changing a file normally changes its SHA-256 digest, so you can check whether a download is intact and matches the publisher's file. It is not an application dependency and does not need to be installed or executed.

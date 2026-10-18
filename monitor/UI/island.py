@@ -37,8 +37,10 @@ class DynamicIsland:
     def __init__(self, root: tk.Tk, snapshot_reader: Callable[[], dict],
                  command_sender: Callable[[str, str, dict], object] | None = None,
                  completion_player: CompletionSoundPlayer | None = None, *, display_history=None,
-                 background_reader=None, rope_reader=None, cartoon_reader=None) -> None:
+                 background_reader=None, rope_reader=None, cartoon_reader=None, view_publisher=None) -> None:
         self.root, self.snapshot_reader, self.command_sender = root, snapshot_reader, command_sender
+        self.view_publisher = view_publisher
+        self.publish_error = False
         root.withdraw()
         self.expanded = False
         self.details = False
@@ -569,10 +571,20 @@ class DynamicIsland:
             self._begin_opening()
             self.root.deiconify()
             self.root.attributes("-topmost", True)
-        if not self._hidden:
-            self._resize()
-        self.draw()
-        self._schedule("poll", 400, self._poll)
+        # Publish the already-filtered window; remote readers must never rerun
+        # reminder scheduling or durable task retirement on their own threads.
+        if self.view_publisher:
+            try:
+                self.view_publisher(self.snapshot, self.selection.runs, self.selection.focus_id, not self._hidden)
+                self.publish_error = False
+            except Exception:
+                self.publish_error = True
+        try:
+            if not self._hidden:
+                self._resize()
+            self.draw()
+        finally:
+            self._schedule("poll", 400, self._poll)
 
     def _reader_unavailable(self) -> None:
         # Preserve identity and preferences so a transient transport outage

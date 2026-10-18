@@ -115,9 +115,17 @@ def test_release_resources_do_not_contain_developer_data():
     root = packaging.parent.resolve()
     for name, destination in entries:
         source = Path(name).resolve().relative_to(root)
-        assert not set(source.parts).intersection({"data", "tests", "preview", "vendor", "runtime", ".env"})
+        # aiohttp includes llhttp's license under licenses/vendor/. This is
+        # legal attribution, not our packaging/vendor executable cache.
+        license_text = source.parts[:2] == ("packaging", "licenses") and Path(name).name.lower() in {"license", "license.txt"}
+        prohibited = {"data", "tests", "preview", "runtime", ".env"}
+        if not license_text:
+            prohibited.add("vendor")
+        assert not set(source.parts).intersection(prohibited)
         assert ".." not in Path(destination).parts
     targets = {f"{destination}/{Path(name).name}" for name, destination in entries}
     assert "monitor/icon_asset/MonitorSolo_logo.png" in targets
     assert "monitor/deepseek_monitor/installed-layout.json" in targets
     assert "defaults/rope/gpt.png" in targets
+    assert "monitor/phone/web/index.html" in targets
+    assert "monitor/phone/web/transport.js" in targets

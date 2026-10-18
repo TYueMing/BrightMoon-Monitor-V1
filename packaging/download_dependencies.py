@@ -99,7 +99,9 @@ def main():
         fetch("https://raw.githubusercontent.com/python/cpython-source-deps/tk-8.6.15.0/license.terms",
               ROOT / "licenses" / "Tk-8.6.15-LICENSE.txt"),
     ]
-    runtime = {"pillow", "zstandard", "websocket-client"}
+    # Include the Web server's transitive runtime dependencies, not only roots.
+    runtime = {"pillow", "zstandard", "websocket-client", "aiohttp", "aiohappyeyeballs",
+               "aiosignal", "attrs", "frozenlist", "multidict", "propcache", "yarl", "idna"}
     for filename, selected in (("requirements-runtime.lock", [r for r in records if r['name'].lower() in runtime]),
                                ("requirements-build.lock", records)):
         lines = ["# CPython 3.13 / Windows x64; install with --no-index --require-hashes."]

@@ -29,7 +29,7 @@ def test_navigation_editor_validation_and_persisted_task(native_app):
     silence(app)
     app.panel.select_tab("tasks")
     assert app.panel.controls["tab:tasks"].rect[1]==182
-    assert app.panel.controls["tab:personalization"].rect[1]==530
+    assert app.panel.controls["tab:remote"].rect[1] > app.panel.controls["tab:personalization"].rect[1]
     assert "task-new" in app.panel.controls
     app.panel.controls["task-new"].callback()
     editor=app.task_window

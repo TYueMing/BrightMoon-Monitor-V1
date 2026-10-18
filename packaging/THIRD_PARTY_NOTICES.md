@@ -11,3 +11,5 @@ PyInstaller、其 hooks、pip、setuptools、pytest 及其他构建/测试依赖
 九张默认悬挂卡通来自项目现有 `data/rope`，已原样复制并保留原来的 `readme.txt`；该说明指向 https://github.com/elysia395/dsh-wallpaper-engine/tree/main/assets/rope 。目前仅保留来源说明，**未据此确认图片的再分发授权**。正式对外分发前由发行者核实图像许可，必要时替换为自己的授权资源。应用 Logo、Agent 品牌 Logo 和提示音也应由发行者确认其使用与分发权；本准备工作没有改变或声称取得这些权利。
 
 最终程序不得携带开发者的账户、API key、Agent 会话、个人壁纸、settings.json 或任务历史数据库。发行资源使用显式允许清单，不递归收集个人 data/。
+
+手机只读 Web 服务新增 aiohttp 3.14.5，以及 aiohappyeyeballs、aiosignal、attrs、frozenlist、multidict、propcache、yarl、idna。各版本的原始许可证已从经过 PyPI SHA256 校验的 wheel 提取到 `licenses/`；aiohttp 的 llhttp 子组件许可证也完整保留。准确版本与哈希以 `dependency-manifest.json` 和 `requirements-runtime.lock` 为准。本次只准备依赖与资源，没有生成新的安装包。

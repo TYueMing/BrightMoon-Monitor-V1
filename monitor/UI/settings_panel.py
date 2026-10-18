@@ -141,7 +141,7 @@ class SettingsPanel(tk.Canvas):
         self.control(key,(left,y-14,right,y+14),callback,enabled,slider=True,minimum=minimum,maximum=maximum,value=value)
 
     def select_tab(self, name):
-        if name not in {"monitor", "tasks", "personalization"}:
+        if name not in {"monitor", "tasks", "personalization", "remote"}:
             return
         self.active_tab = name
         self.focus_key = "tab:"+name
@@ -159,7 +159,7 @@ class SettingsPanel(tk.Canvas):
         self.draw()
 
     def navigation(self):
-        for name,label,y in (("monitor","监控",130),("tasks","任务",182),("personalization","个性化",530)):
+        for name,label,y in (("monitor","监控",130),("tasks","任务",182),("personalization","个性化",486),("remote","远程连接",538)):
             selected = self.active_tab == name
             if selected:
                 self.line(40,y+18,112,y+18,fill="#eaf0ff",width=36*self.scale,capstyle="round")
@@ -378,7 +378,16 @@ class SettingsPanel(tk.Canvas):
         self.text(90,42,"Bright Moon Monitor",28,family="Georgia",italic=True)
         self.text(91,72,"你的 Agent，抬眼可见。",11,MUTED)
         self.navigation()
-        if self.active_tab == "monitor":
+        if self.app.phone_dialog and self.active_tab != "remote":
+            self.app.phone_dialog.window.place_forget()
+        if self.active_tab == "remote":
+            if not self.app.phone_dialog:
+                from ..phone.settings_panel import PhoneSettings
+                self.app.phone_dialog = PhoneSettings(self.app, self)
+            x,y = self.point(CONTENT_LEFT,112)
+            self.app.phone_dialog.layout(x,y,(CONTENT_RIGHT-CONTENT_LEFT)*self.scale,464*self.scale,
+                                        prefs["panel_color"], self.palette.get(INK,INK), self.background_image)
+        elif self.active_tab == "monitor":
             self.draw_monitor(prefs)
         elif self.active_tab == "tasks":
             from .tasks.page import draw_tasks

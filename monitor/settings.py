@@ -16,6 +16,7 @@ from .src.rope_assets import valid_rope_reference
 from .src.cartoon_assets import valid_cartoon_reference
 from .src.paths import PROJECT_ROOT, data_root
 from .music.play.catalog import sound_files, default_sound
+from .phone.config import normalize as normalize_phone
 
 DATA_ROOT = data_root()
 
@@ -119,7 +120,8 @@ class SettingsStore:
         return {**prefs, "background_mode": mode, "background_photo": photo,
                 "monitor_background_mode": island_mode, "monitor_background_photo": island_photo,
                 "panel_transparency": transparency, "panel_color": panel_color.lower(),
-                "rope_enabled": rope_enabled, "rope_image": rope_image, "schema_version": 4,
+                "rope_enabled": rope_enabled, "rope_image": rope_image, "schema_version": 5,
+                "phone": normalize_phone(raw.get("phone"), strict=strict),
                 "task_reminder_sound": task_sound, "task_sound_enabled": task_sound_enabled,
                 "task_monitor_enabled": task_monitor_enabled, "task_view": task_view, "rope_position": rope_position,
                 "island_resident": resident, "cartoon_enabled": cartoon_enabled,

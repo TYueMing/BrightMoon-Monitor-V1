@@ -8,6 +8,8 @@ SOLO = PACKAGING.parent
 
 def resource_files():
     files = []
+    for name in ("index.html", "styles.css", "app.js", "transport.js"):
+        files.append((SOLO / "monitor/phone/web" / name, "monitor/phone/web"))
     # Never recursively include the project, monitor/, or a developer's data/.
     for directory, pattern in (("monitor/icon_asset", "*.png"), ("monitor/music", "*.mp3"),
                                ("monitor/opencode_monitor/assets", "*.png"),

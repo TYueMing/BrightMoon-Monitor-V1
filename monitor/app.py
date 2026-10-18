@@ -25,6 +25,7 @@ from .src.cartoon_assets import CartoonCatalog
 from .music.play.catalog import sound_files, sound_label
 from .music.play.preview import SoundPreview
 from .tasks.service import TaskService
+from .phone.service import PhoneService
 
 INK = "#1c2940"
 MUTED = "#7b8597"
@@ -36,6 +37,8 @@ class MonitorApp:
         self.root = root
         self.store = store or SettingsStore()
         self.hub = hub or SourceHub(self.store.snapshot)
+        self.phone = PhoneService(self.store.root)
+        self.phone_dialog = None
         self.tasks = TaskService(self.store.root, self.store.snapshot)
         self.task_window = None
         self.task_warning = ""
@@ -87,11 +90,17 @@ class MonitorApp:
                                     display_history=self.display_history,
                                     background_reader=lambda:self.island_photo,
                                     rope_reader=lambda:self.rope_photo,
-                                    cartoon_reader=lambda:self.cartoon_photo)
+                                    cartoon_reader=lambda:self.cartoon_photo,
+                                    view_publisher=self.phone.publish)
         root.protocol("WM_DELETE_WINDOW",self.hide_to_tray)
         self.refresh_status()
         if self.store.warning:
             self.notice(self.store.warning,error=True)
+        if self.store.snapshot()["phone"]["enabled"]:
+            self.phone.start(self.store.snapshot()["phone"])
+
+    def show_phone_settings(self):
+        self.panel.select_tab("remote")
 
     def read_snapshot(self):
         try:
@@ -514,7 +523,9 @@ class MonitorApp:
                 self.notice(warning,error=True)
             else:
                 self.notice("任务显示记录已恢复保存")
-        snapshot = self.read_snapshot()
+        # The island owns business sampling. Status rendering must not claim
+        # reminder sound receipts or reread SQLite independently.
+        snapshot = self.island.snapshot
         if self.tasks.error != self.task_warning:
             self.task_warning = self.tasks.error
             self.notice(self.task_warning or "待办数据已恢复",error=bool(self.task_warning))
@@ -576,6 +587,9 @@ class MonitorApp:
     def close(self):
         if self.closed:
             return
+        self.phone.stop()
+        if self.phone_dialog:
+            self.phone_dialog.close()
         self.close_sounds()
         self.close_wallpaper_dialog()
         if self.task_window:

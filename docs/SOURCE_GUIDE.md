@@ -16,7 +16,7 @@ py -3 -m venv .venv
 
 也可以在创建环境并安装依赖后双击 `start.cmd`。无需激活虚拟环境；若没有 `py` 启动器，将建环境命令中的 `py -3` 换成自己的 Python 路径。
 
-三个运行依赖为 Pillow（图像与 Tk 图片）、zstandard（压缩会话读取）、websocket-client（实时 WebSocket 连接）。SQLite、Tkinter、线程、JSON、Windows ctypes 接口来自 Python/操作系统。Node.js 20+ 只在独立执行交互桥测试时需要，普通 Solo 运行不需要 Node。
+四个直接运行依赖为 Pillow（图像与 Tk 图片）、zstandard（压缩会话读取）、websocket-client（实时 WebSocket 连接）与 aiohttp（手机访问 HTTP/SSE 服务）；安装时还会自动安装各自的传递依赖。SQLite、Tkinter、线程、JSON、Windows ctypes 接口来自 Python/操作系统。Node.js 20+ 只在独立执行交互桥测试时需要，普通 Solo 运行不需要 Node。
 
 首次启动会生成自己的 `data/`，来源监控默认关闭。源码仓库不携带个人设置、任务数据库、会话或上传图片，因此挂件和空闲角色列表可能为空。可把自己的图片放入 `data/rope/`、`data/cartoon/`，或使用界面支持的上传入口；运行时图标与声音已随源码保留。`packaging/assets/` 是构建用的固定资源，不是个人数据备份，源码启动不会自动将其复制到 `data/`。
 
@@ -28,6 +28,7 @@ py -3 -m venv .venv
 - `monitor/deepseek_monitor/`：Harness 日志、交互桥、授权/问题状态合并、专属详情。`bridge/` 是可选 Node 交互桥，普通日志监控不要求安装它。
 - `monitor/opencode_monitor/`：本地数据库读取、服务发现、实时客户端、状态补全及专属详情。
 - `monitor/UI/`：共享胶囊、动画、任务圈、任务选择、授权展示、背景和挂件；`detail_panels.py` 以 `app_id` 注册可信详情渲染器，各 Agent 的业务阶段不写死在共享胶囊里。
+- `monitor/phone/`：局域网只读手机实况、配对与最多三台长期设备、受鉴权的个性化图片、SSE 状态同步，以及桌面远程连接页和手机网页。使用说明见 [手机实况](PHONE_VIEWER.md)。
 - `monitor/tasks/`：本地任务 SQLite 存储、日历/间隔调度、提醒生命周期与声音领取；`monitor/UI/tasks/` 提供列表、编辑弹窗和提醒详情。
 - `monitor/src/task_identity.py`、`task_presentation.py`、`display_history.py` 与 `monitor/UI/task_lifetime.py`：任务身份、状态呈现、持久去重和独立退场。退场是撤下监控卡片，不等于停止来源 Agent。
 - `monitor/settings.py`、`monitor/src/paths.py`：配置校验与保存、源码/安装版路径分离。源码写本地 `data/`，安装版写 `%LOCALAPPDATA%/MonitorSolo/data`。

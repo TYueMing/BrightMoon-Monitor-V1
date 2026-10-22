@@ -175,21 +175,22 @@ class SettingsPanel(tk.Canvas):
         self.line(CONTENT_LEFT,178,CONTENT_RIGHT,178,fill="#cbd3df",width=self.scale)
         self.text(CONTENT_LEFT,198,"监控来源",14,bold=True)
         for index,key in enumerate(SOURCE_IDS):
-            y = 238+index*47
+            y = 226+index*41
             self.create_image(*self.point(198,y),image=self.icons[key],tags="front")
             self.text(232,y-9,app_source(key).name,14,bold=True)
             status,color = self.app.source_status.get(key,("未开启",MUTED))
             if key == "codeagent":
                 status,color = "公司内部 Agent · 即将接入",MUTED
-            self.text(232,y+15,status,11,color)
+            self.text(232,y+12,status,10,color)
             self.toggle("source:"+key,670,y-15,prefs["monitor_sources"][key]["enabled"],
                 lambda value,k=key:self.app.toggle_source(k,value),key!="codeagent")
             if key != "codeagent":
                 self.button("settings:"+key,602,y-15,54,"设置",lambda k=key:self.app.source_dialog(k))
-        self.create_image(*self.point(198,426),image=self.icons["solo_task"],tags="front")
-        self.text(232,417,"任务提醒",14,bold=True)
-        self.text(232,441,"按本地计划提醒" if prefs["task_monitor_enabled"] else "已关闭 · 保留任务和计划",11,MUTED)
-        self.toggle("task-monitor",670,411,prefs["task_monitor_enabled"],self.app.toggle_task_monitor)
+        task_y = 226+len(SOURCE_IDS)*41
+        self.create_image(*self.point(198,task_y),image=self.icons["solo_task"],tags="front")
+        self.text(232,task_y-9,"任务提醒",14,bold=True)
+        self.text(232,task_y+12,"按本地计划提醒" if prefs["task_monitor_enabled"] else "已关闭 · 保留任务和计划",10,MUTED)
+        self.toggle("task-monitor",670,task_y-15,prefs["task_monitor_enabled"],self.app.toggle_task_monitor)
         self.line(CONTENT_LEFT,460,CONTENT_RIGHT,460,fill="#cbd3df",width=self.scale)
         self.text(CONTENT_LEFT,485,"Agent 结束后保留",14,bold=True)
         self.text(CONTENT_RIGHT,485,f'{prefs["monitor_hide_minutes"]} 分钟',13,BLUE,anchor="e")
@@ -379,10 +380,10 @@ class SettingsPanel(tk.Canvas):
         self.text(91,72,"你的 Agent，抬眼可见。",11,MUTED)
         self.navigation()
         if self.app.phone_dialog and self.active_tab != "remote":
-            self.app.phone_dialog.window.place_forget()
+            self.app.phone_dialog.hide() if hasattr(self.app.phone_dialog,"hide") else self.app.phone_dialog.window.place_forget()
         if self.active_tab == "remote":
             if not self.app.phone_dialog:
-                from ..phone.settings_panel import PhoneSettings
+                from ..multi_diverse.UI.settings import RemoteSettings as PhoneSettings
                 self.app.phone_dialog = PhoneSettings(self.app, self)
             x,y = self.point(CONTENT_LEFT,112)
             self.app.phone_dialog.layout(x,y,(CONTENT_RIGHT-CONTENT_LEFT)*self.scale,464*self.scale,

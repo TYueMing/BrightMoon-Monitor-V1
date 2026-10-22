@@ -93,7 +93,9 @@ def test_schema_one_upgrade_preserves_acknowledgements_and_sound_claims(tmp_path
     db.close()
     store=TaskStore(tmp_path)
     assert store.get("old")["interval_hours"]==0
-    assert store._db().execute("PRAGMA user_version").fetchone()[0]==2
+    assert store._db().execute("PRAGMA user_version").fetchone()[0]==3
+    assert store.get('old')['timezone']
+    assert (tmp_path/'tasks.sqlite3.pre-v3.bak').exists()
     assert not store.poll(BASE+1)
     assert store.state_for("old")["state"]=="acknowledged"
     assert not store.claim_sound("old:1:2030-01-07",0)

@@ -8,7 +8,7 @@ from ..src.task_identity import task_identity
 from ..src.task_presentation import timestamp
 from ..UI.common_model import FINAL, STATUS_TEXT
 
-NAMES = {"codex": "Codex", "deepseek_harness": "DeepSeek Harness", "opencode": "OpenCode", "solo_task": "待办任务"}
+NAMES = {"codex": "Codex", "deepseek_harness": "DeepSeek Harness", "opencode": "OpenCode", "claude": "Claude Code", "solo_task": "待办任务"}
 
 
 def rows(value, limit):
@@ -32,7 +32,7 @@ def chain(run, private):
                 "completed": None, "truncated": False, "nodes": []}
     values = rows(run.get("tasks") if source == "opencode" else run.get("steps"), 50)
     kind = "plan"
-    if source == "deepseek_harness":
+    if source in ("deepseek_harness", "claude"):
         kind = "observed"
     if source == "opencode" and not values:
         values, kind = rows(run.get("stages"), 50), "observed"
@@ -64,6 +64,10 @@ class PhoneProjector:
         if app_id == "codex":
             metrics = [("最近输入 tokens", usage.get("input")), ("上下文窗口", usage.get("window")),
                        ("会话累计 tokens（非当前上下文）", usage.get("total")), ("已观察压缩次数", info.get("compactions"))]
+        elif app_id == "claude":
+            ci = mapping(run.get("claude"))
+            metrics = [("已观察事件", ci.get("events")), ("已观察压缩次数", ci.get("compactions")),
+                       ("子 Agent 数量", ci.get("subagents"))]
         elif app_id == "opencode":
             context, changes = mapping(run.get("context")), mapping(run.get("changes"))
             children = mapping(run.get("child_summary"))

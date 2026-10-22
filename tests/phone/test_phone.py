@@ -626,3 +626,32 @@ def test_remote_background_tracks_parent_crop_scroll_and_theme(tmp_path):
     finally:
         panel.close()
         root.destroy()
+
+
+def test_presence_http_snapshot_304_ack_and_revocation():
+    async def check():
+        host,runner,url=await server_fixture()
+        try:
+            async with ClientSession(cookie_jar=CookieJar(unsafe=True)) as client:
+                assert (await client.post(url+'/api/v1/viewers',json={},headers={'Origin':url})).status==401
+                response=await client.post(url+'/api/v1/pair',json={'code':host.pairing.open()},headers={'Origin':url})
+                device=(await response.json())['device_id']
+                response=await client.post(url+'/api/v1/viewers',json={},headers={'Origin':url})
+                viewer=(await response.json())['viewer_id']
+                response=await client.get(url+'/api/v1/snapshot?viewer_id='+viewer)
+                first=await response.json();etag=response.headers['ETag']
+                assert not host.presence.online(device)
+                assert (await client.post(url+'/api/v1/presence',json=first['presence'],headers={'Origin':'http://wrong'})).status==403
+                assert (await client.post(url+'/api/v1/presence',json=first['presence'],headers={'Origin':url})).status==200
+                assert host.presence.online(device)
+                assert (await client.post(url+'/api/v1/presence',json=first['presence'],headers={'Origin':url})).status==409
+                response=await client.get(url+'/api/v1/snapshot?viewer_id='+viewer,headers={'If-None-Match':etag})
+                assert response.status==304
+                proof={'viewer_id':response.headers['X-Viewer-Id'],'challenge':response.headers['X-Viewer-Challenge']}
+                assert (await client.post(url+'/api/v1/presence',json=proof,headers={'Origin':url})).status==200
+                host.pairing.revoke(device);host.presence.prune(host.pairing.sessions)
+                assert not host.presence.online(device)
+                assert (await client.post(url+'/api/v1/presence',json=proof,headers={'Origin':url})).status==401
+        finally:
+            host.closing=True;await runner.cleanup()
+    asyncio.run(check())

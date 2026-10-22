@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SOLO · 多领域灵动岛设计</title><link rel="stylesheet" href="design.css"><link rel="stylesheet" href="remote-layout.css"><script type="module" src="design.mjs"></script></head>
+<body><header class="page-header"><a class="brand" href="#">BRIGHT MOON <span> / SOLO</span></a><span class="prototype">交互设计稿 · 模拟数据</span></header>
+<main><section class="intro"><p class="eyebrow">DUAL-ORIGIN LIVE VIEW / 04</p><h1>一长一圆。<br><span>上方轻盈，下方独立。</span></h1><p>有远程信息时，顶部始终保留一长一圆，上下同宽对齐，详情卡片留出间隔独立展开；仅本地时沿用连体样式。</p></section>
+<section class="workbench" aria-label="交互预览"><div class="controls"><div class="scenarios" role="group" aria-label="预览场景"></div><label class="theme-control">外观 <select id="theme"><option value="dark">深色玻璃</option><option value="light">浅色玻璃</option></select></label></div>
+<div class="desktop" id="desktop"><div class="wallpaper-orbit"></div><div class="desktop-caption"><span>YOUR WORKSPACE</span><span>点击胶囊 · 切换来源 · 查看详情</span></div>
+<div class="assembly" id="assembly"><div class="top-row">
+<button id="primary" class="primary" aria-expanded="false" aria-controls="detail"><span class="status-ring running"><img src="../../icon_asset/Codex_logo.png" alt=""></span><span class="primary-copy"><strong id="primary-title">本地 · 执行中</strong><small id="primary-sub">这台电脑 · Codex</small></span><time id="local-time">00:42</time></button>
+<button id="remote" class="primary remote-entry" aria-expanded="false" aria-controls="detail"><span class="remote-symbol"></span><span class="primary-copy"><strong id="remote-title">远程 · 运行验证</strong><small id="remote-sub">设计笔记本 · Codex</small></span><time id="remote-time">03:24</time><span id="remote-count" class="remote-count"></span></button>
+</div>
+<section id="picker" class="picker surface" aria-label="全部其他领域" hidden></section>
+<section id="detail" class="detail surface" aria-label="任务详情" hidden></section></div>
+<div class="stage-note" id="stage-note">第一形态 · 本地长胶囊 + 远程圆圈</div></div>
+<div class="caption-row"><div><span class="caption-number">01</span><div><strong>恒定总宽</strong><p>长胶囊与圆圈互换，外边界不移动。</p></div></div><div><span class="caption-number">02</span><div><strong>固定顺序</strong><p>本地始终在左，远程始终在右。</p></div></div><div><span class="caption-number">03</span><div><strong>独立展开</strong><p>有远程时上下留白；仅本地时保持连体。</p></div></div></div>
+</section><section class="notes"><div><p class="eyebrow">INTERACTION</p><h2>一个焦点，两种形状。</h2></div><p>点击圆圈切换本地 / 远程，并保持当前展开层级；点击长胶囊展开或收起。“查看详情”进入第三态。远程详情先显示远程符号和来源名称，多来源从详情内选择。本页仅使用模拟数据。</p></section></main><footer>SOLO DESIGN STUDY <span>本机 / 远端电脑 / 领域服务</span></footer></body></html>

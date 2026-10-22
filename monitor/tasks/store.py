@@ -25,7 +25,7 @@ class TaskStore:
             try:
                 connection.execute("PRAGMA foreign_keys=ON")
                 version = connection.execute("PRAGMA user_version").fetchone()[0]
-                if version not in (0, 1, 2):
+                if version not in (0, 1, 2, 3):
                     raise ValueError("任务数据库版本较新，请使用更新的 Solo")
                 if version == 0:
                     with connection:
@@ -52,6 +52,20 @@ class TaskStore:
                     except Exception:
                         connection.rollback()
                         raise
+                if version<3:
+                    from .schedule import local_zone
+                    # A SQLite backup precedes the atomic schema migration;
+                    # existing acknowledged occurrence IDs stay unchanged.
+                    if version>0:
+                        backup=sqlite3.connect(str(self.path)+'.pre-v3.bak')
+                        try:connection.backup(backup)
+                        finally:backup.close()
+                    connection.execute('BEGIN IMMEDIATE')
+                    try:
+                        connection.execute("ALTER TABLE tasks ADD COLUMN timezone TEXT NOT NULL DEFAULT ''")
+                        connection.execute('UPDATE tasks SET timezone=?',(local_zone(),))
+                        connection.execute('PRAGMA user_version=3');connection.commit()
+                    except Exception:connection.rollback();raise
                 connection.execute("SELECT id FROM tasks LIMIT 0")
             except Exception:
                 connection.close()
@@ -78,6 +92,7 @@ class TaskStore:
 
     def save(self, value, task_id=None, *, now=None, expected_revision=None):
         now = time.time() if now is None else now
+        if task_id and 'timezone' not in value:value={**value,'timezone':self.get(task_id)['timezone']}
         task = validate(value)
         if task["enabled"] and next_due(task, now) is None:
             raise ValueError("请选择未来的提醒时间，或设置有效的重复规则")
@@ -91,15 +106,15 @@ class TaskStore:
             task_id = task_id or uuid4().hex
             revision = old["revision"] + 1 if old else 1
             db.execute("""INSERT INTO tasks
-                (id,title,body,start_date,time_of_day,weekdays,lead_minutes,enabled,revision,created_at,updated_at,interval_hours)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                (id,title,body,start_date,time_of_day,weekdays,lead_minutes,enabled,revision,created_at,updated_at,interval_hours,timezone)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(id) DO UPDATE SET title=excluded.title, body=excluded.body,
                 start_date=excluded.start_date, time_of_day=excluded.time_of_day, weekdays=excluded.weekdays,
                 lead_minutes=excluded.lead_minutes, enabled=excluded.enabled, revision=excluded.revision,
-                updated_at=excluded.updated_at, interval_hours=excluded.interval_hours""",
+                updated_at=excluded.updated_at, interval_hours=excluded.interval_hours,timezone=excluded.timezone""",
                 (task_id, task["title"], task["body"], task["start_date"], task["time_of_day"],
                  json.dumps(task["weekdays"]), task["lead_minutes"], int(task["enabled"]), revision,
-                 old["created_at"] if old else now, now, task["interval_hours"]))
+                 old["created_at"] if old else now, now, task["interval_hours"],task['timezone']))
             db.execute("UPDATE occurrences SET state='expired' WHERE task_id=? AND state IN ('active','snoozed')", (task_id,))
         return self.get(task_id)
 
@@ -135,12 +150,19 @@ class TaskStore:
         return [{**dict(row), "task": definitions[row["task_id"]]} for row in rows
                 if definitions[row["task_id"]]["enabled"] and definitions[row["task_id"]]["revision"] == row["revision"]]
 
-    def act(self, occurrence_id, cycle, action, *, now=None):
+    def act(self, occurrence_id, cycle, action, *, now=None, command_id=None):
         if action not in {"snooze", "acknowledge"} or type(cycle) is not int:
             raise ValueError("待办操作无效")
         now = time.time() if now is None else now
         db = self._db()
         with db:
+            db.execute("CREATE TABLE IF NOT EXISTS peer_receipts(id TEXT PRIMARY KEY, target TEXT NOT NULL)")
+            target=f"{occurrence_id}:{cycle}:{action}"
+            if command_id:
+                previous=db.execute("SELECT target FROM peer_receipts WHERE id=?",(command_id,)).fetchone()
+                if previous:
+                    if previous[0]!=target:raise ValueError('命令身份冲突')
+                    return
             row = db.execute("SELECT * FROM occurrences WHERE id=?", (occurrence_id,)).fetchone()
             if row is None:
                 raise ValueError("提醒已失效")
@@ -153,6 +175,8 @@ class TaskStore:
             else:
                 db.execute("""UPDATE occurrences SET state='snoozed', cycle=cycle+1, remind_at=?, expires_at=? WHERE id=?""",
                            (now+300, now+300+task["lead_minutes"]*60, occurrence_id))
+
+            if command_id:db.execute("INSERT INTO peer_receipts VALUES (?,?)",(command_id,target))
 
     def claim_sound(self, occurrence_id, cycle):
         with self._db() as db:

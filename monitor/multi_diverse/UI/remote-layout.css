@@ -1,0 +1,21 @@
+/* Remote presence selects this shell, even when local details have focus.
+   No selectors here affect the existing local-only connected card. */
+.assembly[data-layout="remote-split"] .top-row {
+  width: var(--header-width);
+  margin-inline: auto;
+  background: transparent;
+  border-radius: 0;
+}
+.assembly[data-layout="remote-split"] .primary {
+  background: var(--panel);
+  backdrop-filter: blur(18px);
+  border-radius: 31px;
+}
+.assembly[data-layout="remote-split"] .primary.compact {
+  border-radius: 50%;
+}
+.assembly[data-layout="remote-split"] .detail,
+.assembly[data-layout="remote-split"] .picker {
+  top: var(--detail-top);
+  border-radius: 26px;
+}

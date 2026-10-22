@@ -21,6 +21,9 @@ Solo is a standalone desktop monitor. Follow Agent tasks in one place, handle ap
 
 This is the English documentation. Screenshots show the current Chinese interface; this README does not imply that the application has an English UI option.
 
+
+**Source update · 2026-10-22:** Claude Code monitoring and optional one-time approvals, desktop collaboration, phone presence and startup recovery are now available in source. **The downloadable 0.1.0 installer has not been rebuilt.** See the [update and review notes](docs/UPDATE_2026-10-22.md) and [Claude setup guide](monitor/claude_monitor/README.md).
+
 ## Wallpaper and desktop showcase
 
 Combine your own application wallpaper, panel styling, and island background. These two actual screenshots show a photo background with a light island card, and a coastal wallpaper shared by the control panel and the island.
@@ -70,6 +73,7 @@ The compact view shows source logos, task status, and elapsed time. Click to exp
 
 ## Supported Agents
 
+- **Claude Code (source version)**: monitors local Desktop Code-tab and CLI sessions through installed hooks, showing observed stages, tool results, subagents, compactions and summaries. Optional one-time approvals are disabled by default. Ordinary Chat/Cowork and remote sessions are not supported. Install the hooks in Monitor → Claude Code → Settings, then start a new Code session.
 - **Codex**: reads local session logs and attempts to discover a local App Server. Approvals require a connection to the same live service that owns the task, with the required operation available. Log-only monitoring does not provide working approval controls.
 - **OpenCode**: reads status from its local database. Approvals, answers, and stop requests require a reachable live service with the corresponding capabilities.
 - **DeepSeek Harness**: monitors local session logs. Approvals and answers require an optional interaction bridge. The bridge currently targets **0.2.0-rc.2**; compatibility with other versions needs verification.
@@ -178,6 +182,8 @@ monitor/
   opencode_monitor/           OpenCode database, live service, and detail panel
   tasks/                      Local reminder storage, scheduling, and lifecycle
   music/play/                 Sound discovery, preview, and playback
+  claude_monitor/            Claude Code hooks, event mailbox, approvals, settings and details
+  multi_diverse/             Paired desktop sync, permissions and remote-island UI
   icon_asset/                 Application and source icons
 tests/                        Python regression tests and preview generators
 docs/                         Usage, integration, and architecture documentation

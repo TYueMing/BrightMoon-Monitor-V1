@@ -37,6 +37,7 @@ class TaskStrip:
     def draw(self, island):
         from .theme import COLORS, blend
         selection, w = island.selection, island._size[0]
+        inset = island.phone_inset() if hasattr(island,"phone_inset") else 0
         self.advance(selection)
         island._register((8, 5, w-8, 58), "toggle")
         run, status = island._run(), island._state()
@@ -52,8 +53,8 @@ class TaskStrip:
                 island._text(62, 30, role, width=124, font="title")
                 island._text(192, 30, STATUS_TEXT.get(status, "执行中..."), width=w-274, fill=COLORS.get(status, COLORS["offline"]))
             else:
-                island._text(62, 31, STATUS_TEXT.get(status, "执行中..."), width=w-140, font="title")
-            island._text(w-22, 31, elapsed(run), anchor="e", font="time", fill="#a1b0c6")
+                island._text(62, 31, STATUS_TEXT.get(status, "执行中..."), width=w-140-inset, font="title")
+            island._text(w-22-inset, 31, elapsed(run), anchor="e", font="time", fill="#a1b0c6")
             if run:
                 island._register((14, 11, 54, 51), "task:"+run["run_id"])
             return
@@ -95,8 +96,8 @@ class TaskStrip:
         if p < .42:
             bg = island.canvas.palette.get("#141d2c", "#141d2c")
             ink = island.canvas.palette.get("#eef4ff", "#eef4ff")
-            island._text(text_x, 31, selection.caption(), width=max(0, w-82-text_x), font="body", fill=blend(ink, bg, min(1, p/.42)))
-        island._text(w-22, 31, elapsed(run), anchor="e", font="time", fill="#a1b0c6")
+            island._text(text_x, 31, selection.caption(), width=max(0, w-82-text_x-inset), font="body", fill=blend(ink, bg, min(1, p/.42)))
+        island._text(w-22-inset, 31, elapsed(run), anchor="e", font="time", fill="#a1b0c6")
 
     @staticmethod
     def detail_label(run):
@@ -115,7 +116,9 @@ class TaskStrip:
                               focus=self.focus_levels.get(run["run_id"],0),
                               keyboard_focus=island._focus_key=="task:"+run["run_id"])
             island._register((14,11,54,51),"task:"+run["run_id"])
-            island._text(width/2,31,run.get("task_summary", "待办")[:5],font="title",anchor="center",width=width-116)
+            inset=getattr(island,'phone_inset',lambda:0)()
+            island._text(width/2-inset,31,run.get("task_summary", "待办")[:5],font="title",anchor="center",width=width-116-inset*2)
+            if inset:island._text(width-22-inset,31,stamp_label(run['reminder']['due_at'])[-5:],anchor='e',font='time')
             return
         for index, task in enumerate(selection.runs):
             x = 34+index*46
@@ -128,4 +131,4 @@ class TaskStrip:
         caption = run.get("task_summary", "待办")[:5] if run.get("app_id")=="solo_task" else selection.caption()
         island._text(text_x,31,caption,width=max(20,width-text_x-90),font="title")
         clock = stamp_label(run["reminder"]["due_at"])[-5:] if run.get("app_id")=="solo_task" else elapsed(run)
-        island._text(width-22,31,clock,anchor="e",font="time",fill="#a1b0c6")
+        island._text(width-22-getattr(island,'phone_inset',lambda:0)(),31,clock,anchor="e",font="time",fill="#a1b0c6")

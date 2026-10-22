@@ -19,6 +19,9 @@ Solo 是独立运行的桌面监控器：集中查看 Agent 的任务状态，�
 
 **[下载 Windows 安装包 ZIP](MonitorSolo-0.1.0-windows-x64.zip)** · **[下载校验文件](SHA256SUMS.txt)**
 
+
+**源码更新 · 2026-10-22：**新增 Claude Code 监控与单次授权、多电脑协同、手机在线状态及启动恢复修正。**下方 0.1.0 安装包没有重新打包，新功能请运行源码。**详见 [更新与审查记录](docs/UPDATE_2026-10-22.md) 和 [Claude 接入说明](monitor/claude_monitor/README.md)。
+
 ## 壁纸与桌面效果
 
 应用背景、控制面板和灵动岛可以自由搭配。下面两张实际截图展示了照片背景搭配浅色卡片，以及控制面板与灵动岛采用同一张海岸壁纸的效果。
@@ -176,6 +179,8 @@ monitor/
   opencode_monitor/           OpenCode 数据库 / 实时服务 / 私有详情
   tasks/                      本地待办存储、调度与提醒
   music/play/                 音频枚举、试听与播放
+  claude_monitor/            Claude Code Hook、事件邮箱、授权、设置与专属详情
+  multi_diverse/             多电脑配对同步、权限及独立远程布局
   icon_asset/                 应用与来源图标
 tests/                        Python 回归测试与预览生成器
 docs/                         使用、接入与架构文档

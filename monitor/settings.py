@@ -17,6 +17,7 @@ from .src.cartoon_assets import valid_cartoon_reference
 from .src.paths import PROJECT_ROOT, data_root
 from .music.play.catalog import sound_files, default_sound
 from .phone.config import normalize as normalize_phone
+from .multi_diverse.config import normalize as normalize_peers
 
 DATA_ROOT = data_root()
 
@@ -122,6 +123,7 @@ class SettingsStore:
                 "panel_transparency": transparency, "panel_color": panel_color.lower(),
                 "rope_enabled": rope_enabled, "rope_image": rope_image, "schema_version": 5,
                 "phone": normalize_phone(raw.get("phone"), strict=strict),
+                "peers": normalize_peers(raw.get("peers"), strict=strict),
                 "task_reminder_sound": task_sound, "task_sound_enabled": task_sound_enabled,
                 "task_monitor_enabled": task_monitor_enabled, "task_view": task_view, "rope_position": rope_position,
                 "island_resident": resident, "cartoon_enabled": cartoon_enabled,

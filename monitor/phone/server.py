@@ -7,6 +7,7 @@ from pathlib import Path
 from aiohttp import web
 from .pairing import PairError
 from .assets import icon
+from .presence import Presence
 
 WEB_ROOT = Path(__file__).with_name("web")
 STATIC = {"app.js": "text/javascript", "transport.js": "text/javascript", "styles.css": "text/css"}
@@ -18,6 +19,7 @@ HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
 
 
 def make_app(host):
+    host.presence = Presence()
     @web.middleware
     async def guard(request, handler):
         try:
@@ -106,10 +108,29 @@ def make_app(host):
         value["asset_revision"] = host.asset_revision
         return value
 
+    async def viewers(request):
+        body = await request.json()
+        key = host.presence.register(request[SESSION], body.get("viewer_id"))
+        return web.json_response({"viewer_id": key})
+
+    async def presence(request):
+        body = await request.json()
+        host.presence.acknowledge(request[SESSION], body["viewer_id"], body["challenge"])
+        return web.json_response({"ok": True})
+
+    def receipt(request):
+        key = request.query.get("viewer_id")
+        return host.presence.challenge(request[SESSION], key) if key else None
+
     async def snapshot(request):
         value = snapshot_value()
+        proof = receipt(request)
         etag = f'"{value["epoch"]}:{value["revision"]}:{host.asset_revision}"'
         headers = {"ETag": etag, "X-Producer-Age": str(value["producer_age_ms"]), "X-Server-Time": str(value["server_time_ms"])}
+        if proof:
+            headers["X-Viewer-Challenge"] = proof["challenge"]
+            headers["X-Viewer-Id"] = proof["viewer_id"]
+            value["presence"] = proof
         if request.headers.get("If-None-Match") == etag:
             return web.Response(status=304, headers=headers)
         return web.json_response(value, headers=headers)
@@ -146,12 +167,13 @@ def make_app(host):
                 key = (value["epoch"], value["revision"], host.asset_revision)
                 now = time.monotonic()
                 if key != previous:
+                    value["presence"] = receipt(request)
                     data = f'event: snapshot\nid: {key[0]}:{key[1]}\ndata: {json.dumps(value, ensure_ascii=False)}\n\n'
                     previous, heartbeat = key, now
                 # Faster than the browser's 5 s producer-staleness threshold.
                 # Otherwise a healthy, unchanged task appears stale every cycle.
                 elif now-heartbeat >= 2:
-                    data = 'event: heartbeat\ndata: '+json.dumps({k: value[k] for k in ("server_time_ms", "producer_age_ms")})+'\n\n'
+                    data = 'event: heartbeat\ndata: '+json.dumps({**{k: value[k] for k in ("server_time_ms", "producer_age_ms")}, "presence": receipt(request)})+'\n\n'
                     heartbeat = now
                 else:
                     await asyncio.sleep(.5)
@@ -170,6 +192,8 @@ def make_app(host):
     app.router.add_get("/icons/{name}", icons)
     app.router.add_post("/api/v1/pair", pair)
     app.router.add_get("/api/v1/session", session)
+    app.router.add_post("/api/v1/viewers", viewers)
+    app.router.add_post("/api/v1/presence", presence)
     app.router.add_post("/api/v1/logout", logout)
     app.router.add_get("/api/v1/snapshot", snapshot)
     app.router.add_get("/api/v1/events", events, allow_head=False)

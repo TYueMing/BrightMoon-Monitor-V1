@@ -7,7 +7,7 @@ from PIL import Image
 from ..src.app_sources import ICON_ROOT
 
 ICONS = {"codex": "Codex_logo.png", "deepseek_harness": "Deepseek_logo.png",
-         "opencode": "Opencode_logo.png", "solo_task": "LOGO_EXE.png", "unknown": "MonitorSolo_logo.png"}
+         "opencode": "Opencode_logo.png", "claude": "claude_logo.png", "solo_task": "LOGO_EXE.png", "unknown": "MonitorSolo_logo.png"}
 
 
 def icon(name):

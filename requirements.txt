@@ -2,3 +2,6 @@ Pillow>=10,<13
 zstandard>=0.25,<0.26
 websocket-client>=1.9,<2
 aiohttp>=3.14.5,<4
+cryptography>=43,<47
+tzdata>=2025.1
+tzlocal>=5,<6

@@ -51,6 +51,9 @@ def authorization_actions(snapshot: dict, run: dict) -> dict:
 
 
 def elapsed(run: dict) -> str:
+    if run.get("remote_origin") and type(run.get("remote_elapsed_seconds")) is int:
+        seconds=max(0,run["remote_elapsed_seconds"])
+        return f"{seconds//60:02d}:{seconds%60:02d}"
     try:
         start = datetime.fromisoformat(str(run["started_at"]))
         end = datetime.fromisoformat(str(run.get("ended_at") or run["updated_at"])) if run.get("status") in FINAL else datetime.now(start.tzinfo)

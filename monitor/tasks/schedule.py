@@ -1,8 +1,26 @@
 """Calendar repeats and elapsed-hour repeats anchored to the first due time."""
 from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def local_zone():
+    try:
+        from tzlocal import get_localzone_name
+    except ImportError as error:
+        # Keep reminders unavailable rather than silently scheduling in UTC.
+        # TaskService and the editor already surface validation errors safely.
+        raise ValueError('缺少时区依赖 tzlocal，请在运行 Solo 的 Python 环境安装 requirements.txt') from error
+    return get_localzone_name()
+
+
+def task_zone(task):
+    return ZoneInfo(task.get('timezone') or local_zone())
 
 
 def validate(value):
+    zone=value.get('timezone') or local_zone()
+    try:ZoneInfo(zone)
+    except (ZoneInfoNotFoundError,TypeError,ValueError):raise ValueError('提醒时区无效，请使用 IANA 时区名称') from None
     if not isinstance(value.get("title"),str) or not isinstance(value.get("body",""),str):
         raise ValueError("标题和内容须为文本")
     title = value["title"].strip()
@@ -40,7 +58,7 @@ def validate(value):
         raise ValueError("启用状态无效")
     return dict(title=title, body=body, start_date=start.isoformat(),
                 time_of_day=clock.strftime("%H:%M"), weekdays=sorted(set(weekdays)),
-                lead_minutes=lead, enabled=enabled, interval_hours=interval)
+                lead_minutes=lead, enabled=enabled, interval_hours=interval,timezone=zone)
 
 
 def due_on(task, day):
@@ -49,12 +67,13 @@ def due_on(task, day):
         return None
     if not task["weekdays"] and day != start:
         return None
-    wall = datetime.combine(day, time.fromisoformat(task["time_of_day"]))
+    zone=task_zone(task)
+    wall = datetime.combine(day, time.fromisoformat(task["time_of_day"])).replace(tzinfo=zone,fold=0)
     # Skip nonexistent spring-forward wall times. Ambiguous fall-back times use
     # fold=0; the occurrence's calendar-date key prevents a second notification.
     try:
         stamp = wall.timestamp()
-        return stamp if datetime.fromtimestamp(stamp) == wall else None
+        return stamp if datetime.fromtimestamp(stamp,zone).replace(tzinfo=None) == wall.replace(tzinfo=None) else None
     except (OverflowError, OSError, ValueError):
         return None  # The platform cannot represent this calendar date.
 
@@ -77,7 +96,7 @@ def next_due(task, now):
         except (OverflowError, OSError, ValueError):
             return None
         return due
-    first = max(datetime.fromtimestamp(now).date(), date.fromisoformat(task["start_date"]))
+    first = max(datetime.fromtimestamp(now,task_zone(task)).date(), date.fromisoformat(task["start_date"]))
     for offset in range(8 if task["weekdays"] else 1):
         try:
             day = first + timedelta(days=offset)
@@ -99,7 +118,7 @@ def occurrence_key(task, due):
     if task.get("interval_hours"):
         anchor = due_on(task, date.fromisoformat(task["start_date"]))
         return f'interval:{round((due-anchor)/(task["interval_hours"]*3600))}'
-    return datetime.fromtimestamp(due).date().isoformat()
+    return datetime.fromtimestamp(due,task_zone(task)).date().isoformat()
 
 
 def stamp_label(value):

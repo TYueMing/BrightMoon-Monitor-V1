@@ -24,7 +24,7 @@ def test_settings_roundtrip_and_placeholder_cannot_be_enabled(tmp_path):
     assert restored["monitor_sources"]["codex"]["enabled"]
     assert restored["monitor_hide_minutes"] == 3
     assert not restored["monitor_sound_enabled"]
-    assert set(restored["monitor_sources"]) == {"codex", "opencode", "deepseek_harness", "codeagent"}
+    assert set(restored["monitor_sources"]) == {"codex", "opencode", "deepseek_harness", "claude", "codeagent"}
     with pytest.raises(ValueError):
         store.set_source("codeagent", enabled=True)
     assert not store.snapshot()["monitor_sources"]["codeagent"]["enabled"]

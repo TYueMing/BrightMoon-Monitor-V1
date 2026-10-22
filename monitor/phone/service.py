@@ -45,6 +45,7 @@ class PhoneService:
                                      for r in self.registry.read().values()]
             except ValueError as error:
                 status["message"] = str(error)
+        status["connected_device_count"] = sum(bool(d.get("online")) for d in status.get("devices", [])) if status["state"] == "running" else 0
         return status
 
     @property
@@ -149,9 +150,10 @@ class PhoneService:
                     except (ValueError, OSError) as error:
                         self.report(command_error=str(error))
                 self.pairing.prune()
+                self.presence.prune(self.pairing.sessions)
                 self.report(code=self.pairing.code if now < self.pairing.deadline else "",
                             code_seconds=max(0, int(self.pairing.deadline-now)),
-                            devices=[{"id": s.id, "name": s.name, "online": s.streams > 0,
+                            devices=[{"id": s.id, "name": s.name, "online": self.presence.online(s.id),
                                       "remembered": s.remembered, "cookie_confirmed": s.cookie_confirmed,
                                       "last_seen_seconds": int(now-s.touched)} for s in self.pairing.sessions.values()])
                 if media and media.done():

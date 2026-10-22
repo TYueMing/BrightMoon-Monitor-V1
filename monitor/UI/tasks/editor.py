@@ -37,7 +37,9 @@ class TaskEditor(tk.Toplevel):
             self.canvas.create_text(self.s(x),self.s(y),anchor="w",text=text,fill=muted if small else self.ink,
                 font=app.small if small else app.bold if bold else app.font)
         label(38,48,"编辑任务" if task else "新增任务",bold=True)
-        label(38,76,"按电脑本地时间提醒 · 所有内容仅保存在本机",small=True)
+        from ...tasks.schedule import local_zone
+        zone=(task or {}).get('timezone') or local_zone()
+        label(38,76,f"提醒时区：{zone} · 由本机调度",small=True)
         future = datetime.now()+timedelta(minutes=15)
         initial = task or dict(title="",body="",start_date=future.date().isoformat(),
                               time_of_day=future.strftime("%H:%M"),weekdays=[],lead_minutes=5,enabled=True)

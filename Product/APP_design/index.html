@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <title>Bright Moon · 跨端 APP 交互设计</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="design-bar">
+    <a href="APP_UI_design.md" class="design-wordmark">BM<span> / APP DESIGN</span></a>
+    <div class="platforms" aria-label="平台预览">
+      <button data-platform="desktop" aria-pressed="true">Windows</button>
+      <button data-platform="ios" aria-pressed="false">iOS</button>
+      <button data-platform="android" aria-pressed="false">Android</button>
+    </div>
+    <span class="prototype-label">交互原型 · 模拟数据</span>
+  </header>
+  <div class="presentation">
+    <div class="presentation-heading"><span>CONNECTED, BUT CALM.</span><p>让每一端，都在同一个节奏里。</p></div>
+    <div id="device-frame" data-platform="desktop">
+      <div class="system-bar"><span>9:41</span><span id="platform-name">iOS</span><span>● ▰</span></div>
+      <div id="app" class="app"><div class="layout"><aside id="sidebar"></aside><main id="main"></main></div><nav id="bottom-nav" aria-label="移动端主导航"></nav></div>
+    </div>
+    <footer class="design-footer"><span>同一份任务 · 明确的来源 · 可确认的操作</span><button id="reset-demo">重置演示</button><a href="APP_UI_design.md">阅读设计说明 ↗</a></footer>
+  </div>
+  <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

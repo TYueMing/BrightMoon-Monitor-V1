@@ -44,7 +44,8 @@ class DynamicIsland:
         root.withdraw()
         self.expanded = False
         self.details = False
-        self.snapshot = {"status": "offline", "message": "正在连接", "runs": [], "actions": []}
+        self.snapshot = {"status": "offline", "message": "正在连接", "runs": [], "actions": [],
+                         "source_states": {}}
         self.selected_id = ""
         self.selection = TaskSelection(display_history)
         self.task_strip = TaskStrip()

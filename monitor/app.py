@@ -2,6 +2,9 @@
 import tkinter as tk
 import sqlite3
 import argparse
+import time
+import queue
+from concurrent.futures import ThreadPoolExecutor
 from tkinter import colorchooser, filedialog, messagebox, ttk
 
 from PIL import Image, ImageTk
@@ -16,7 +19,9 @@ from .src.display_history import DisplayHistory
 from .src.source_config import SOURCE_IDS
 from .src.source_hub import SourceHub
 from .UI.display import enable_dpi_awareness, window_scale
-from .UI.island import DynamicIsland
+from .multi_diverse.UI.island import CollaborativeIsland as DynamicIsland
+from .multi_diverse.service import PeerService
+from .src.task_identity import task_identity
 from .UI.settings_panel import SettingsPanel
 from .UI.wallpaper_picker import WallpaperPicker
 from .src.wallpapers import read_photo
@@ -38,6 +43,9 @@ class MonitorApp:
         self.store = store or SettingsStore()
         self.hub = hub or SourceHub(self.store.snapshot)
         self.phone = PhoneService(self.store.root)
+        self.peers = PeerService(self.store.root)
+        self.peer_executor = ThreadPoolExecutor(max_workers=1,thread_name_prefix="solo-owner-command")
+        self.peer_job = None
         self.phone_dialog = None
         self.tasks = TaskService(self.store.root, self.store.snapshot)
         self.task_window = None
@@ -91,13 +99,22 @@ class MonitorApp:
                                     background_reader=lambda:self.island_photo,
                                     rope_reader=lambda:self.rope_photo,
                                     cartoon_reader=lambda:self.cartoon_photo,
-                                    view_publisher=self.phone.publish)
+                                    view_publisher=self.publish_phone, phone_status=self.phone.snapshot_status,peer_catalog=self.peers.catalog_snapshot)
         root.protocol("WM_DELETE_WINDOW",self.hide_to_tray)
         self.refresh_status()
         if self.store.warning:
             self.notice(self.store.warning,error=True)
         if self.store.snapshot()["phone"]["enabled"]:
             self.phone.start(self.store.snapshot()["phone"])
+
+        if self.store.snapshot()["peers"]["enabled"]:
+            self.peers.start(self.store.snapshot()["peers"])
+        self.drain_peer_commands()
+
+    def publish_phone(self,snapshot,visible,focus,desktop_visible):
+        # Peer re-sharing remains denied unless explicitly implemented/granted.
+        local=[r for r in visible if not r.get("remote_origin")]
+        self.phone.publish({**snapshot,"runs":[r for r in snapshot.get("runs",[]) if not r.get("remote_origin")]},local,focus,desktop_visible)
 
     def show_phone_settings(self):
         self.panel.select_tab("remote")
@@ -113,15 +130,55 @@ class MonitorApp:
                         "runs":[{**r,"connection_error":True} for r in self._agent_snapshot.get("runs",[])]}
         reminders = self.tasks.read()
         # Do not mutate cached Agent snapshots, revisions, commands or identity.
-        return {**snapshot, "runs":[*reminders,*snapshot.get("runs",[])],
+        local = {**snapshot, "runs":[*reminders,*snapshot.get("runs",[])],
                 "source_states":snapshot.get("source_states",{}), "preferences":self.store.snapshot(),
                 "next_reminder":self.tasks.upcoming, "upcoming_reminder_count":self.tasks.upcoming_count,
                 "task_data_error":bool(self.tasks.error)}
+        self.peers.publish_local(local)
+        imported=self.peers.snapshot() if self.store.snapshot()['peers']['show_remote'] else []
+        return {**local,"runs":[*local["runs"],*imported]}
 
     def send_command(self, action, run_id, payload):
+        if run_id.startswith("peer:"):
+            run=next((r for r in self.peers.catalog_snapshot() if r["run_id"]==run_id),None)
+            if not run or run.get("connection_error"):raise ValueError("远程来源已离线")
+            return self.peers.submit(run,action,payload)
         if action == "local_reminder":
             return self.tasks.send(run_id,payload)
         return self.hub.send(action,run_id,payload)
+
+    def drain_peer_commands(self):
+        if self.closed:return
+        while not self.peers.owner_commands.empty():
+            cmd=self.peers.owner_commands.get_nowait()
+            def finish(result,c=cmd):
+                try:self.peers.command('result',dict(id=c['id'],peer=c['peer'],result=result))
+                except ValueError:pass
+            try:
+                status=self.peers.snapshot_status()
+                peer=next((p for p in status.get('peers',[]) if p['id']==cmd['peer']),None)
+                from .multi_diverse.protocol import OPERATIONS
+                if not self.peers.authorized(cmd):
+                    raise ValueError('权限已撤销或命令过期')
+                target=cmd['target'];payload=cmd['payload'];operation=cmd['operation']
+                if not isinstance(payload,dict) or set(payload)-{'confirmation_id','expected_revision','cycle','action','answers','answer'}:
+                    raise ValueError('操作参数无效')
+                if operation=='local_reminder':
+                    self.tasks.store.act(target['run_id'][5:],payload.get('cycle'),payload.get('action'),command_id=cmd['peer']+':'+cmd['id'])
+                    finish(dict(status='succeeded',message='提醒操作已完成'))
+                else:
+                    def work(c=cmd,done=finish):
+                        try:
+                            if not self.peers.authorized(c):raise ValueError('权限已撤销或操作过期')
+                            self.hub.send_target(c['operation'],c['target'],c['payload'])
+                            done(dict(status='accepted',message='已提交来源，等待实际状态确认'))
+                        except ValueError as error:
+                            unknown=getattr(error,'code','') in ('DISCONNECTED','BRIDGE_ERROR')
+                            done(dict(status='outcome_unknown' if unknown else 'rejected',message='结果待来源核对，请勿重复提交' if unknown else '来源请求已更新或已拒绝'))
+                        except Exception:done(dict(status='outcome_unknown',message='结果待来源核对，请勿重复提交'))
+                    self.peer_executor.submit(work)
+            except (ValueError,OSError,sqlite3.Error):finish(dict(status='rejected',message='请求已过期、冲突或权限已撤销'))
+        self.peer_job=self.root.after(100,self.drain_peer_commands)
 
     def task_dialog(self, task=None):
         if self.task_window and self.task_window.winfo_exists():
@@ -390,6 +447,9 @@ class MonitorApp:
         if self.dialog and self.dialog.winfo_exists():
             self.dialog.lift()
             return
+        if app_id == "claude":
+            from .claude_monitor.settings_ui import open_settings
+            return open_settings(self)
         app = app_source(app_id)
         dialog = self.dialog = tk.Toplevel(self.root)
         dialog.title(app.name + " · 监控设置")
@@ -531,11 +591,17 @@ class MonitorApp:
             self.notice(self.task_warning or "待办数据已恢复",error=bool(self.task_warning))
         prefs = self.store.snapshot()
         self.startup_enabled,self.startup_status = self.startup.status()
+        # A source read may fail before the first complete snapshot arrives.
+        # Render that state without sampling again (which would consume reminders).
+        source_states = snapshot.get("source_states")
+        source_states = source_states if isinstance(source_states, dict) else {}
         for key in SOURCE_IDS:
             if key == "codeagent":
                 continue
-            state = snapshot["source_states"].get(key,{})
-            status = state.get("status","waiting")
+            state = source_states.get(key)
+            state = state if isinstance(state, dict) else {}
+            fallback = "error" if snapshot.get("status") == "error" else "connecting"
+            status = state.get("status", fallback)
             enabled = prefs["monitor_sources"][key]["enabled"]
             count = sum(r.get("app_id")==key for r in self.island.selection.runs)
             if not enabled:
@@ -544,6 +610,8 @@ class MonitorApp:
                 text,color = "连接异常 · 请检查来源设置","#c24c43"
             elif status == "connecting":
                 text,color = "正在连接…",BLUE
+            elif status == "setup_required":
+                text,color = "请点设置安装 Hook", "#b57822"
             elif count:
                 text,color = f"监看中 · {count} 个任务",BLUE
             else:
@@ -588,6 +656,9 @@ class MonitorApp:
         if self.closed:
             return
         self.phone.stop()
+        self.peers.stop()
+        self.peer_executor.shutdown(wait=False,cancel_futures=True)
+        if self.peer_job:self.root.after_cancel(self.peer_job)
         if self.phone_dialog:
             self.phone_dialog.close()
         self.close_sounds()

@@ -56,10 +56,12 @@ def panel_for(app_id: str) -> AgentMonitorPanel:
         from ..deepseek_monitor.panel import DeepSeekPanel
         from ..codex_monitor.panel import CodexPanel
         from ..opencode_monitor.panel import OpenCodePanel
+        from ..claude_monitor.panel import ClaudePanel
         from .tasks.detail_panel import ReminderPanel
         _PANELS.setdefault("deepseek_harness", DeepSeekPanel())
         _PANELS.setdefault("codex", CodexPanel())
         _PANELS.setdefault("opencode", OpenCodePanel())
+        _PANELS.setdefault("claude", ClaudePanel())
         _PANELS.setdefault("solo_task", ReminderPanel())
         _INITIALIZED = True
     return _PANELS.get(app_id or "unknown", _UNKNOWN)

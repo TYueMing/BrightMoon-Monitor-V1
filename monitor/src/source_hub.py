@@ -17,7 +17,9 @@ def source_factories():
     from ..deepseek_monitor.adapter import DeepSeekSource
     from ..codex_monitor.adapter import CodexSource
     from ..opencode_monitor.adapter import OpenCodeSource
-    return {"deepseek_harness": DeepSeekSource, "codex": CodexSource, "opencode": OpenCodeSource}
+    from ..claude_monitor.adapter import ClaudeSource
+    return {"deepseek_harness": DeepSeekSource, "codex": CodexSource,
+            "opencode": OpenCodeSource, "claude": ClaudeSource}
 
 
 class SourceWorker:
@@ -138,7 +140,7 @@ class SourceHub:
             runs.extend({**r, "app_id": key, "monitor_scope": scope,
                          "started_order": int(timestamp(r.get("started_at"))*1000)}
                         for r in result.get("runs", []) if isinstance(r, dict))
-            actions.extend(result.get("actions", []))
+            actions.extend({**a,"app_id":key} for a in result.get("actions", []) if isinstance(a,dict))
         live = [r for r in runs if r.get("status") in LIVE and not r.get("connection_error")]
         queue = approval_queue(live)
         active = queue[0][0] if queue else max(live or runs, key=lambda r: r["started_order"], default={})
@@ -151,6 +153,32 @@ class SourceHub:
         self.read()
         for worker in list(self.workers.values()):
             worker.poll()
+
+    def send_target(self, action, target, payload):
+        """Remote routing must revalidate full source and generation, not run_id."""
+        from .task_identity import task_identity
+        snapshot=self.read()
+        matches=[r for r in snapshot['runs'] if r.get('app_id')==target.get('app_id')
+                 and task_identity(r)==task_identity(target)]
+        if len(matches)!=1 or matches[0].get('connection_error'):raise ValueError('来源目标已失效')
+        run=matches[0]
+        with self.lock:worker=self.workers.get(run['app_id'])
+        if not worker:raise ValueError('来源已关闭')
+        # Polling and command submission share this lock: no refreshed request
+        # may slip between the final action check and adapter dispatch.
+        with worker.adapter_lock:
+            own=worker.snapshot()
+            generations=[r for r in own.get('runs',[]) if r.get('run_id')==run['run_id']]
+            if len(generations)!=1 or task_identity({**generations[0],'app_id':run['app_id'],'monitor_scope':run.get('monitor_scope')})!=task_identity(target):
+                raise ValueError('任务轮次已变化')
+            if run['app_id']=='deepseek_harness':
+                from ..multi_diverse.owner_controls import send_harness
+                return send_harness(generations[0],action,payload)
+            available=any(a.get('type')==action and a.get('run_id')==run['run_id']
+                          and (not a.get('confirmation_id') or (a['confirmation_id']==payload.get('confirmation_id')
+                          and a.get('expected_revision')==payload.get('expected_revision'))) for a in own.get('actions',[]))
+            if not available:raise ValueError('请求已变化')
+            return worker.send(action,run['run_id'],payload)
 
     def send(self, action, run_id, payload):
         snapshot = self.read()

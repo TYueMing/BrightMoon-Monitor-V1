@@ -2,6 +2,9 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
+.test-runs/
+*.dpapi
+*.bak
 .artifacts/
 data/
 *.log

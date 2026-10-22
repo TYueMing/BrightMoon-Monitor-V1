@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
-SOURCE_IDS = ("deepseek_harness", "opencode", "codex", "codeagent")
+SOURCE_IDS = ("deepseek_harness", "opencode", "codex", "claude", "codeagent")
 PLACEHOLDERS = {"codeagent": "CodeAgent"}
 
 
@@ -82,6 +82,13 @@ def normalize_sources(value=None, *, strict=False):
                     raise ValueError("请选择有效的 Codex 连接方式")
                 mode = "auto"
             record["connection_mode"] = mode
+        if app_id == "claude":
+            approvals = item.get("allow_approvals", False)
+            if not isinstance(approvals, bool):
+                if strict:
+                    raise ValueError("Claude 授权桥开关必须为布尔值")
+                approvals = False
+            record["allow_approvals"] = approvals
         result[app_id] = record
     return result
 
@@ -105,6 +112,22 @@ def deepseek_session_root(config):
     return candidate/"sessions" if (candidate/"sessions").is_dir() else candidate
 
 
+def claude_event_root(config):
+    """Return SOLO's Claude Code event mailbox, never the conversation database.
+
+    The adapter intentionally consumes a dedicated SQLite mailbox written by our
+    hook.  Claude's transcript files contain private conversation content and
+    vary by desktop/remote environment, so they are not treated as a monitor
+    transport.
+    """
+    path = str(config.get("data_path") or "").strip()
+    if path:
+        return Path(path).expanduser()
+    local = os.environ.get("LOCALAPPDATA")
+    base = Path(local) if local else Path.home() / "AppData" / "Local"
+    return base / "MonitorSolo" / "data" / "claude"
+
+
 def inspect_source(app_id, config):
     """Read-only diagnostics. Never scan credentials or execute a configured binary."""
     if app_id not in SOURCE_IDS:
@@ -112,6 +135,9 @@ def inspect_source(app_id, config):
     normalized = normalize_sources({app_id: config}, strict=True)[app_id]
     if app_id in PLACEHOLDERS:
         return {"status": "unsupported", "message": f"路径可保存；{PLACEHOLDERS[app_id]} 监控尚未接入。"}
+    if app_id == "claude":
+        from ..claude_monitor.adapter import inspect
+        return inspect(normalized)
     if app_id == "opencode":
         from ..opencode_monitor.adapter import inspect
         return inspect(normalized)

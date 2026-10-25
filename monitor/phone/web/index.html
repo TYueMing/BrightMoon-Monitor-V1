@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
   <title>Bright Moon · 手机实况</title>
+  <link rel="icon" type="image/png" href="/icons/unknown">
+  <link rel="apple-touch-icon" href="/icons/unknown">
   <link rel="stylesheet" href="/static/styles.css">
   <script type="module" src="/static/app.js"></script>
 </head>
@@ -20,25 +22,46 @@
         <button class="primary" id="pair-button" type="submit">连接电脑</button>
       </form>
       <p class="error" id="pair-error" role="alert"></p>
-      <p class="fine">只读访问 · 仅用于可信局域网<br>HTTP 传输未加密，请勿用于公共 Wi-Fi。</p>
+      <p class="fine" id="transport-note">默认仅查看。长期保存后，电脑可单独授予编辑和授权权限。<br>请通过已验证证书的 HTTPS 连接。</p>
     </section>
     <section id="viewer" hidden>
+      <nav class="remote-tabs" aria-label="页面"><button id="tab-live" aria-pressed="true">实况</button><button id="tab-tasks" aria-pressed="false">提醒任务</button></nav>
+      <div id="live-page">
       <article id="island" class="island" data-stage="0">
         <div class="capsule"><div id="task-strip" role="group" aria-label="选择任务"></div><button id="title-toggle" aria-expanded="false" aria-controls="card-body"><span id="capsule-title">等待任务</span></button><time id="timer">00:00</time></div>
         <div id="card-body" hidden></div>
         <div id="card-controls" hidden><button id="details">查看详情</button><button id="collapse">收起</button></div>
         <img id="idle-image" class="idle-image" alt="空闲角色" hidden>
       </article>
+      <section id="remote-live" class="info-card" aria-label="远程协同实况" hidden>
+        <div class="toolbar"><div><span class="eyebrow">REMOTE LIVE</span><h2>远程协同实况</h2></div><span id="remote-live-count" class="fine"></span></div>
+        <div id="remote-live-body"></div>
+      </section>
       <img id="pendant" class="pendant" alt="悬挂角色，点击展开" role="button" tabindex="0" hidden>
+      <section id="remote-actions" aria-label="需要处理" class="info-card" hidden></section>
+      </div>
+      <section id="tasks-page" class="info-card" hidden>
+        <div class="toolbar"><h2>提醒任务</h2><button id="new-task">新增任务</button></div>
+        <p id="task-permission" class="fine"></p><div id="task-list"></div>
+        <button id="load-tasks">刷新列表</button><button id="more-tasks" hidden>下一页</button>
+      </section>
+      <p id="remote-feedback" role="status" class="remote-feedback"></p>
+      <button id="check-command" hidden>核对上次操作结果</button>
+      <button id="resolve-command" hidden>已在电脑核对，解除等待</button>
       <section class="info-card" aria-label="连接与同步">
       <div class="toolbar"><div><span class="eyebrow">连接与同步</span><span id="connection" role="status">尚未连接</span></div><button id="logout">退出连接</button></div>
       <p id="warning" role="status" hidden></p>
       <div class="view-options"><label><input type="checkbox" id="follow"> 跟随电脑焦点</label><span>最多同步 5 项</span></div>
       <p id="freshness" class="fine"></p>
-      <footer>只读监控 · 保持本页打开，切回前台会自动同步。</footer>
+      <footer>权限由电脑管理 · 保持本页打开，切回前台自动同步。</footer>
       </section>
     </section>
     <noscript>此实况页面需要启用 JavaScript。</noscript>
   </main>
+  <dialog id="remote-dialog" aria-labelledby="remote-dialog-title"><form id="remote-form">
+    <div class="toolbar"><h2 id="remote-dialog-title">任务详情</h2><button type="button" id="remote-close" aria-label="关闭">关闭</button></div>
+    <div id="remote-fields"></div><p id="remote-form-error" role="alert"></p>
+    <button id="remote-submit" class="primary" type="submit">保存</button>
+  </form></dialog>
 </body>
 </html>

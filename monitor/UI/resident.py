@@ -63,7 +63,16 @@ class ResidentView:
         width = ui._size[0]
         ui._register((8,5,width-8,58),"toggle")
         ui._draw_ring(34,31,IDLE_GREEN,"idle",run={"app_id":"solo_idle"},focus=1.)
-        ui._text(width/2,31,"Bright Moon",width=width-174,font="brand",anchor="center")
+        ui._text(width/2,25,"Bright Moon",width=width-174,font="brand",anchor="center")
+        phone = getattr(ui, "phone_status", None)
+        connected = bool(phone and phone().get("connected_device_count", 0))
+        if connected:
+            # Keep the badge below the brand so it cannot collide with the
+            # marquee. It is painted as part of the same frame (no flicker).
+            icon = getattr(ui, "device_icons", None)
+            if icon:
+                ui.canvas.create_image(width/2-31,47,image=icon.get("phone",round(12*ui.scale),IDLE_GREEN),tags=("phone_connected",))
+            ui._text(width/2-18,47,"手机在线",font="small",fill="#586579",anchor="w")
         self._marquee(ui,width-86,31,68)
 
     def _marquee(self, ui, x, y, width):

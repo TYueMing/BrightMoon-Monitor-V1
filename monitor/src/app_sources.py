@@ -32,4 +32,4 @@ register_app_source(AppSource("opencode", "OpenCode", ICON_ROOT / "Opencode_logo
 register_app_source(AppSource("claude", "Claude Code", ICON_ROOT / "claude_logo.png"))
 register_app_source(AppSource("codeagent", "CodeAgent", ICON_ROOT / "Codeagent_logo.png"))
 register_app_source(AppSource("solo_task", "待办任务", ICON_ROOT / "LOGO_EXE.png"))
-register_app_source(AppSource("solo_idle", "Bright Moon", ICON_ROOT / "MonitorSolo_logo.png"))
+register_app_source(AppSource("solo_idle", "Bright Moon", ICON_ROOT / "LOGO.png"))

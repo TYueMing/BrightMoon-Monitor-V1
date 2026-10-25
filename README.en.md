@@ -7,7 +7,7 @@
 <p align="center"><a href="README.md">简体中文</a> · <strong>English</strong></p>
 
 <p align="center">A little island on your desktop for Agent progress and everyday reminders.</p>
-<p align="center"><strong>Desktop Live View · Multiple Agent Sources · Local Reminders · Custom Appearance</strong></p>
+<p align="center"><strong>Agent Live View · Desktop Collaboration · Phone Monitoring · Recurring Reminders</strong></p>
 
 <p align="center">
   <img src="assets/readme/idle-preview.gif" width="440" alt="Idle capsule previewing reminders scheduled to start within the next hour">
@@ -15,14 +15,53 @@
 
 Solo is a standalone desktop monitor. Follow Agent tasks in one place, handle approvals when the source supports live interaction, or use it for local reminders. No BrightMoon account or BrightMoon main application is required.
 
-**Current version: 0.1.0 · Windows 10 (1809+) / Windows 11 · x64**
+**Source update: 2026-10-25 · Published installer: 0.1.0 · Windows x64**
 
 **[Download the Windows installer ZIP](MonitorSolo-0.1.0-windows-x64.zip)** · **[Download checksums](SHA256SUMS.txt)**
 
 This is the English documentation. Screenshots show the current Chinese interface; this README does not imply that the application has an English UI option.
 
 
-**Source update · 2026-10-22:** Claude Code monitoring and optional one-time approvals, desktop collaboration, phone presence and startup recovery are now available in source. **The downloadable 0.1.0 installer has not been rebuilt.** See the [update and review notes](docs/UPDATE_2026-10-22.md) and [Claude setup guide](monitor/claude_monitor/README.md).
+**Source update · 2026-10-25:** encrypted device service, phone reminder editing and approvals, simpler desktop pairing and reconnection, island animation/layout fixes, and the new logo. **The 0.1.0 installer has not been rebuilt; run source for current features.** Test and packaging files are not updated in this sync. Read the [sync and validation notes](docs/UPDATE_2026-10-25.md). See the [phone guide](docs/REMOTE_SERVICE_GUIDE.md) and [source architecture](docs/SOURCE_GUIDE.md).
+
+## Desktop collaboration and phone monitoring
+
+**One local network, more ways to follow your Agents.** The Remote Connection page manages both services inside Solo; no separate terminal is needed. Devices must be reachable on the LAN. Public relays and NAT traversal are not provided.
+
+### Computer to computer: pair once, stay connected
+
+1. Run current source on both computers and enable Remote Connection → Computer Collaboration.
+2. Generate an invitation on one computer and paste it on the other. Compare the verification code and confirm.
+3. Binding enables bidirectional sharing of current tasks and source-supported operations, without a separate sharing-permission checklist. Individual Agent approvals still require a human decision.
+4. A long local capsule and a remote circle sit side by side. Switch focus to inspect that device in the expanded views.
+
+Bindings and identities persist. The service retries after restarts or temporary network loss. If both saved addresses become unreachable, update the peer address instead of deleting the binding. Personalization → General can keep an online paired computer visible. Removing a binding revokes trust.
+
+### Phone browser: view progress and perform permitted actions
+
+1. Enable HTTPS under Remote Connection → Device Service on a trusted private network.
+2. Establish certificate trust following the guide, open the displayed address, and enter the 8-digit pairing code.
+3. Select Keep Permanently on the computer; up to **3 devices** can be retained. Reopening the same address can restore the connection while browser credentials remain available.
+4. Grant each device the required reminder viewing/editing/deletion, acknowledgement/snooze, or source-supported Agent approval permissions.
+
+The phone shows the local island and **collaborative remote live views**; peer-originated content is read-only on the phone. Initial pairing and HTTP compatibility mode are read-only. Sensitive actions require HTTPS and explicit device permissions. Reminder editing checks versions to prevent overwriting newer desktop changes.
+
+<p align="center">
+  <img src="assets/readme/phone-live-current.png" width="310" alt="Phone browser showing live tasks and pending actions">
+  <img src="assets/readme/phone-editor-current.png" width="310" alt="Editing a recurring reminder from the phone browser">
+</p>
+
+> Screenshots use sample tasks. This is a mobile website, not a released native app. Browser exit, screen lock and background suspension can interrupt the connection; system background push is not provided. Follow the [phone connection guide](docs/REMOTE_SERVICE_GUIDE.md) to establish certificate trust instead of bypassing certificate warnings.
+
+Details: [computer collaboration](monitor/multi_diverse/IMPLEMENTATION.md) · [unified device service](monitor/remote/README.md) · [remote API](monitor/remote/API.md).
+
+## Updated control panel
+
+The new logo is used throughout. The brand header stays attached to the control panel as the window resizes. A master sound switch, peer notification sounds and persistent online-peer display are available. Phone presence is separated from idle text to avoid overlap and flicker.
+
+<p align="center">
+  <img src="assets/readme/monitor-current.png" width="740" alt="Current monitoring panel and brand layout">
+</p>
 
 ## Wallpaper and desktop showcase
 
@@ -46,7 +85,7 @@ Combine your own application wallpaper, panel styling, and island background. Th
 - **Spring animation**: expand the capsule into a card, revealing more of its wallpaper.
 - **Hanging character**: choose an image and its horizontal position. Clicking the pendant also expands the island, with a gentle tug and fade animation.
 - **Idle character**: toggle it independently and upload a transparent PNG / WebP cutout.
-- **Sounds**: choose and preview notification sounds in Personalization → Sounds (「个性化 → 声音」).
+- **Sounds**: use the master switch and choose/preview Agent, reminder and peer sounds in Personalization → Sounds (「个性化 → 声音」).
 
 <p align="center">
   <img src="assets/readme/appearance.png" width="720" alt="Appearance settings for panel colors, island backgrounds, and transparency">
@@ -155,7 +194,7 @@ This repository now includes both the installer archive and **standalone Solo so
 
 ### Run from source
 
-Use Windows x64 and Python 3.10+ with Tkinter, preferably an official Python installation. The current release build and source checks use CPython 3.13.16.
+Use Windows x64 and Python 3.10+ with Tkinter, preferably an official Python installation. Use the versions specified in `requirements.txt`; no developer-specific Conda environment is required.
 
 ```powershell
 git clone https://github.com/TYueMing/BrightMoon-Monitor-V1.git
@@ -165,7 +204,7 @@ py -3 -m venv .venv
 .\.venv\Scripts\python.exe run.py
 ```
 
-After creating the environment and installing dependencies, you can also double-click `start.cmd`. Runtime dependencies are **Pillow, zstandard, and websocket-client**; Python provides SQLite, Tkinter, and other standard-library components. Source mode creates its own `data/` directory with no developer settings or tasks. If the `py` launcher is unavailable, use your Python executable's path to create the environment.
+After creating the environment and installing dependencies, you can also double-click `start.cmd`. Runtime dependencies are **Pillow, zstandard, websocket-client, aiohttp, cryptography, tzdata, and tzlocal**; Python provides SQLite, Tkinter, and other standard-library components. Source mode creates its own `data/` directory with no developer settings or tasks. If the `py` launcher is unavailable, use your Python executable's path to create the environment.
 
 ### Layout and responsibilities
 
@@ -184,6 +223,9 @@ monitor/
   music/play/                 Sound discovery, preview, and playback
   claude_monitor/            Claude Code hooks, event mailbox, approvals, settings and details
   multi_diverse/             Paired desktop sync, permissions and remote-island UI
+  phone/                      Mobile web, pairing, SSE and media delivery
+  remote/                     HTTPS, permissions, task editing, command receipts
+  runtime_check.py            Pre-launch dependency diagnostics
   icon_asset/                 Application and source icons
 tests/                        Python regression tests and preview generators
 docs/                         Usage, integration, and architecture documentation
@@ -197,6 +239,11 @@ flowchart LR
     Hub --> App[MonitorApp merged snapshot]
     Tasks[TaskService local reminders] --> App
     App --> Island[Shared island UI]
+    App --> Phone[HTTPS / SSE mobile web]
+    App <--> Peers[WSS paired computers]
+    Phone --> Gate[Permissions / source capabilities / receipts]
+    Peers --> Gate
+    Gate --> Commands
     History[Task lifecycle / persistent history] <--> Island
     Island --> Panels[Source-specific expanded panels]
     Panels --> Commands[User command routing]
@@ -207,18 +254,15 @@ flowchart LR
 
 The shared UI handles island states, animation, and task switching. Adapters parse source data and communicate with Agents; source-specific panels render their details. Commands recheck the current task and available actions. Reading logs does not grant approval capability. Local reminders have separate storage and commands, so reminder buttons never become Agent commands.
 
-### Tests and data boundaries
+### Source sync and data boundaries
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m pytest tests -q
-# Optional interaction bridge tests; requires Node.js 20+
-node --test monitor/deepseek_monitor/tests/bridge.test.mjs
-```
+This update includes application source, runtime icons/audio and documentation. **Tests, packaging scripts, installers and offline dependencies are not updated. Personal data, settings, task databases, sessions, logs, keys, environments, promotional videos and generated caches are excluded.** Existing test and packaging files remain historical versions, not validation/build materials synchronized with this source update.
 
-The source includes required icons, sounds, curated build resources, and tests. **Personal data, account settings, task databases, sessions, logs, virtual environments, and download caches are excluded.** Source mode writes to the root `data/` directory; installed mode uses the Windows user data directory. Add your own pendant and idle-character images; source startup does not import the developer's image selections.
+Source mode creates `data/` in the project root; installed mode uses the Windows user data directory. Add your own pendant, character and wallpaper images. Runtime ICO and logo resources are included, so a clean source launch does not require `packaging/`.
 
-The repository does not contain `packaging/vendor/`. Rebuilding an installer requires preparing dependencies and tools as described in the [build guide](docs/WINDOWS_PACKAGING.md), currently in Chinese. Publishing source does not itself assign an open-source license. See [THIRD_PARTY_NOTICES](packaging/THIRD_PARTY_NOTICES.md) for component licenses and resource attribution.
+Run `python run.py --check-runtime` to check the selected interpreter. `python run.py --self-test report.json` uses temporary data and offline sources; it briefly creates and removes a separate Windows test startup entry. See [startup diagnostics](docs/WINDOWS_SOURCE_FIX_2026-10-25.md).
+
+See [THIRD_PARTY_NOTICES](packaging/THIRD_PARTY_NOTICES.md) for third-party notices. Publishing source does not itself assign an open-source license.
 
 ## What is SHA256SUMS.txt?
 

@@ -33,3 +33,14 @@ preview/
 build/
 dist/
 packaging/vendor/
+
+/promotional_video/
+/ads/
+/monitor-solo-windows-fix/
+/.tmp*/
+/tests/
+/packaging/
+/requirements-dev.txt
+**/test_*.py
+**/*.test.mjs
+**/test_model.mjs

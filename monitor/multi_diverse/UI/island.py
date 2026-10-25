@@ -9,17 +9,20 @@ from ...UI.common_model import elapsed,STATUS_TEXT
 from ...src.task_identity import task_identity
 from ..panel import PeerPanel
 from .icons import DeviceIcons
+from ...UI.window_state import spring_progress
 
 class CollaborativeIsland(DynamicIsland):
-    def __init__(self,*args,phone_status=None,peer_catalog=None,**kwargs):
+    def __init__(self,*args,phone_status=None,peer_catalog=None,peer_status=None,**kwargs):
         from .motion import reduced_motion
         self.reduced_motion=reduced_motion()
         self.origin='local';self.origin_focus={};self.all_visible={};self.peer_scroll={};self.picker=False
         self.picker_offset=0;self.peer_pending={};self.peer_notice='';self.peer_notice_key=None
-        self.peer_catalog=peer_catalog;self.manual_peer=None
+        self.peer_catalog=peer_catalog;self.peer_status=peer_status;self.manual_peer=None
         self.device_icons=DeviceIcons(args[0]);self.peer_panel=PeerPanel();self.phone_status=phone_status
-        self._split_frame=None;self._split_key=None;self._split_tk=None;self._base_frame=None
+        self._split_frame=None;self._split_key=None;self._split_tk=None;self._base_frame=None;self._base_surface_key=None
         self._origin_amount=0.;self._origin_start=0.;self._origin_at=0.;self._origin_target=0.
+        self._split_gap=10.
+        self._peer_sound_seen=set();self._peer_sound_initialized=False
         super().__init__(*args,**kwargs)
     def _split(self):return any(r.get('remote_origin') for r in self.all_visible.values())
     def _run(self):
@@ -29,7 +32,9 @@ class CollaborativeIsland(DynamicIsland):
         return next((r for r in choices if r['run_id']==wanted),choices[0] if choices else {})
     def _panel(self):return self.peer_panel if self._run().get('remote_origin') else super()._panel()
     def _is_idle(self):
-        if self._split():return self.origin=='local' and not self._run()
+        if self._split():
+            run=self._run()
+            return bool(run.get('remote_presence')) or (self.origin=='local' and not run)
         return super()._is_idle()
     def _target_size(self):
         if self._split():
@@ -50,45 +55,78 @@ class CollaborativeIsland(DynamicIsland):
         phase=self.phase;self.phase=0;kwargs['focus']=0
         try:return super()._draw_ring(*args,**kwargs)
         finally:self.phase=phase
-    def _poll(self):
-        expanded,details,origin=self.expanded,self.details,self.origin
+    def _selection_updated(self,new_batch):
         previous=set(self.all_visible)
-        super()._poll()
-        self.all_visible=self.selection.lifetime.visible(self.snapshot)
+        # Use the same lifetime evaluation as the base shell, before it draws.
+        # Updating after super()._poll() rendered stale/new layouts back-to-back
+        # and repeatedly restarted animations while tasks were changing.
+        self.all_visible=dict(self.selection.records)
+        # Persistent online peers are presentation-only rows. They never enter
+        # the phone feed, command path, lifetime history, or task sounds.
+        prefs=self.snapshot.get('preferences',{})
+        if prefs.get('peer_resident') and self.peer_status:
+            for peer in self.peer_status().get('peers',[]):
+                if peer.get('online') and not any(r.get('remote_origin')==peer.get('id') for r in self.all_visible.values()):
+                    pid='peer-presence:'+str(peer.get('id'))
+                    self.all_visible[pid]=dict(run_id=pid,remote_origin=peer.get('id'),remote_name=peer.get('name','协同电脑'),
+                        remote_source='presence',remote_presence=True,app_id='solo_peer',status='idle',task_summary='在线',steps=[],tools=[],metrics=[])
         if self.manual_peer and self.peer_catalog:
             manual=next((r for r in self.peer_catalog() if r['run_id']==self.manual_peer),None)
             if manual:self.all_visible[manual['run_id']]=manual
             else:self.manual_peer=None
         if not self._split():
             self.origin='local';self._origin_amount=self._origin_target=0.;self.picker=False
-        elif previous.intersection(self.all_visible) and expanded:
-            self.expanded,self.details,self.origin=expanded,details,origin
+        elif previous.intersection(self.all_visible) and self.expanded:
+            new_batch=False
+        return new_batch
+
+    def _poll(self):
+        super()._poll()
         # The full visible catalog is independent of the five recommended rows.
-        if self._split() and self._hidden and self.all_visible:
+        if self.manual_peer and self._split() and self._hidden and self.all_visible:
             self._hidden=False;self.root.deiconify()
-        if not self._hidden:self._resize();self.draw()
+            self._resize();self.draw()
     def _draw_surface(self,w,h,radius):
-        if not self._split() or self._opening:return super()._draw_surface(w,h,radius)
-        if self._base_frame is not None:self._surface_frame=self._base_frame
+        if not self._split() or self._opening:
+            self._base_frame=None;self._base_surface_key=None;self._split_key=None
+            return super()._draw_surface(w,h,radius)
         # The split shell uses its full bounds (62px circles, 12px gap),
-        # rather than the connected shell's legacy 5px painting inset.
-        has=super()._draw_surface(w+10,h+11,radius)
-        self.canvas.delete('island_surface')
-        frame=self._surface_frame
-        self._base_frame=frame
+        # rather than the connected shell's legacy 5px painting inset. Cache
+        # the unmasked scene so breathing repaints do not recreate a blank
+        # Tk frame every 55ms.
+        photo=self._background_reader() if self._background_reader else None
+        base_key=(id(photo),w,h,self.scale,self.canvas.palette.get('#141d2c','#141d2c'),self.expanded)
+        if self._base_frame is None or base_key!=self._base_surface_key:
+            has=super()._draw_surface(w+10,h+11,radius)
+            self.canvas.delete('island_surface')
+            self._base_frame=self._surface_frame
+            self._base_surface_key=base_key
+            self._split_key=None
+        else:
+            has=photo is not None
+            self._surface_frame=self._base_frame
+        frame=self._base_frame
         amount=self._origin_amount
-        key=(id(frame),round(amount,3),w,h,self.scale,self.expanded)
+        key=(id(frame),round(amount,3),round(self._split_gap,3),w,h,self.scale,self.expanded)
         if key!=self._split_key:
             # Mask a single wallpaper scene into three disconnected rounded
             # surfaces, preserving color/opacity and exposing the real desktop.
             image=frame.copy();mask=Image.new('L',image.size);d=ImageDraw.Draw(mask)
-            sc=self.scale;circle=62;long=w-circle-10
+            sc=self.scale;circle=62;gap=self._split_gap;long=max(circle,w-circle-gap)
             lengths=(long+(circle-long)*amount,circle+(long-circle)*amount)
             x=0
             for width in lengths:
-                d.rounded_rectangle((round(x*sc),0,min(image.width-1,round((x+width)*sc)-1),round(62*sc)-1),radius=round(31*sc),fill=255)
-                x+=width+10
-            if self.expanded:d.rounded_rectangle((0,round(74*sc),image.width-1,image.height-1),radius=round(26*sc),fill=255)
+                x1=round(x*sc);x2=min(image.width-1,round((x+width)*sc)-1)
+                y2=min(image.height-1,round(62*sc)-1)
+                if x2>=x1 and y2>=0:
+                    d.rounded_rectangle((x1,0,x2,y2),radius=min(round(31*sc),(x2-x1)//2,y2//2),fill=255)
+                x+=width+gap
+            # expanded is the destination state; early spring frames can still
+            # be only 62px tall (or overshoot below it). Never draw inverted bounds.
+            card_top=round(74*sc)
+            if self.expanded and image.height>card_top:
+                d.rounded_rectangle((0,card_top,image.width-1,image.height-1),
+                                    radius=min(round(26*sc),(image.height-card_top)//2),fill=255)
             from PIL import ImageChops
             image.putalpha(ImageChops.multiply(image.getchannel('A'),mask))
             self._split_frame=image;self._split_tk=ImageTk.PhotoImage(image,master=self.root);self._split_key=key
@@ -108,20 +146,21 @@ class CollaborativeIsland(DynamicIsland):
         if not getattr(self,'canvas',None):return
         if not self._split() or self._opening:
             super().draw()
-            if not self._hidden and not self.expanded and self.phone_status and self.phone_status().get('connected_device_count',0):
-                # Local header reserves room via TaskStrip's optional inset.
-                self.canvas.create_image(self._size[0]-32,31,image=self.device_icons.get('phone',round(16*self.scale),'#71d9b2'),tags=('phone_connected',))
             return
         if self._hidden:return
         self.canvas.offset_y=0;self.canvas.delete('all');self._buttons=[];self._halo_requests=[]
-        self._sync_pendant();w,h=self._size
-        t=min(1,max(0,(time.monotonic()-self._origin_at)/.42));ease=1-(1-t)**3
+        w,h=self._size
+        t=min(1,max(0,(time.monotonic()-self._origin_at)/.42))
+        ease=max(0.,min(1.0,spring_progress(t)))
         if self.reduced_motion:ease=1
+        # A small gap pulse makes the two capsules feel like they separate and
+        # merge. Total width stays fixed by reducing the long side accordingly.
+        self._split_gap=10.+3.*t*(1.-t)
         self._origin_amount=self._origin_start+(self._origin_target-self._origin_start)*ease
         self.canvas.wallpaper_active=self._draw_surface(w,h,27)
-        long=w-72;lx=0 if self.origin=='local' else 72
+        long=w-62-self._split_gap
         local_width=long+(62-long)*self._origin_amount
-        for origin,x,width in [('local',0,local_width),('remote',local_width+10,w-local_width-10)]:
+        for origin,x,width in [('local',0,local_width),('remote',local_width+self._split_gap,w-local_width-self._split_gap)]:
             focused=origin==self.origin
             rows=[r for r in self.all_visible.values() if bool(r.get('remote_origin'))==(origin=='remote')]
             run=next((r for r in rows if r['run_id']==self.origin_focus.get(origin)),rows[0] if rows else {})
@@ -141,18 +180,46 @@ class CollaborativeIsland(DynamicIsland):
                 self._text(x+60,24,('本地' if origin=='local' else '远程')+' · '+label,width=width-140-inset,font='title')
                 self._text(x+60,42,run.get('remote_name') or run.get('task_summary') or 'Bright Moon',width=width-145-inset,font='small',fill='#9eafc7')
                 self._text(x+width-22-inset,31,elapsed(run) if run else '空闲',anchor='e',font='time')
-                if phone:self.canvas.create_image(x+width-32,31,image=self.device_icons.get('phone',round(16*self.scale),'#71d9b2'),tags=('phone_connected',))
+                if phone:self.canvas.create_image(x+width-32,31,image=self.device_icons.get('phone',round(16*self.scale),color),tags=('phone_connected',))
         self._draw_halos()
         if self.expanded and h>100:
             old=self._size
             self.canvas.offset_y=12;self._size=(w,h-12)
-            approval=self._panel().draw(self,COLORS.get(self._state(),'#76b0ff'))
-            if not approval:self._approval_details.hide()
-            self._size=old;self.canvas.offset_y=0
+            try:
+                approval=self._panel().draw(self,COLORS.get(self._state(),'#76b0ff'))
+                if not approval:self._approval_details.hide()
+            finally:
+                self._size=old;self.canvas.offset_y=0
         else:self._approval_details.hide()
+        # Paint the independent pendant after the island frame. Its layered
+        # window may trigger a native repaint; doing this first exposed the
+        # cleared canvas for one frame during the breathing loop.
+        self._sync_pendant()
     def phone_inset(self):
         return 24 if self.phone_status and not self.expanded and self.phone_status().get('connected_device_count',0) else 0
     def _play_new_completions(self,snapshot):
+        # Peer cues are edge-triggered: a heartbeat/reconnect does not replay
+        # sound, while a new approval, stop request, error, or terminal state
+        # gets one cue. The master switch still mutes every category.
+        prefs=snapshot.get('preferences',{})
+        events=set()
+        for run in snapshot.get('runs',[]):
+            if not isinstance(run,dict) or not run.get('remote_origin') or run.get('remote_presence'):continue
+            entity=run.get('remote_entity',{}) or {}
+            approval=entity.get('approval') or {}
+            status=run.get('status','')
+            if approval.get('id'):
+                events.add((run.get('run_id'),'approval',approval.get('revision') or approval.get('id')))
+            if status in ('failed','error','stale','cancelled','completed'):
+                events.add((run.get('run_id'),'status',status))
+        if not self._peer_sound_initialized:
+            self._peer_sound_seen.update(events);self._peer_sound_initialized=True
+        elif prefs.get('sound_enabled',True) and prefs.get('peer_sound_enabled',True):
+            sound=prefs.get('peer_notification_sound')
+            for event in sorted(events-self._peer_sound_seen,key=str):
+                try:self._completion_player.play(sound)
+                except Exception:pass
+            self._peer_sound_seen.update(events)
         super()._play_new_completions({**snapshot,'runs':[r for r in snapshot.get('runs',[]) if not r.get('remote_origin')]})
     def _activate(self,button):
         key=button['key']
@@ -160,8 +227,16 @@ class CollaborativeIsland(DynamicIsland):
             self.picker=False;self.peer_notice=''
             origin=key.split(':')[-1]
             if origin==self.origin:
-                self.expanded=not self.expanded;self.details=False
-                if not self.expanded:self.manual_peer=None
+                # Keep the same three-stage gesture as the local shell: the
+                # capsule opens to progress, opens again to details, then
+                # returns to the mini state. This makes the whole expanded
+                # surface clickable instead of requiring footer controls.
+                if not self.expanded:
+                    self.expanded=True;self.details=False
+                elif not self.details:
+                    self.details=True
+                else:
+                    self.expanded=self.details=False;self.manual_peer=None
             else:
                 self.origin=origin;self._origin_start=self._origin_amount;self._origin_target=float(origin=='remote');self._origin_at=time.monotonic()
             self._resize();self.draw();return

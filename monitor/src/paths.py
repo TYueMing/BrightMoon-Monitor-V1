@@ -30,7 +30,7 @@ def deepseek_runtime_root():
     return PROJECT_ROOT / "monitor" / "deepseek_monitor" / "runtime"
 
 
-def initialize_installed_assets():
+def initialize_installed_assets(data_directory=None):
     """Seed only missing, explicitly bundled pendant images; never overwrite.
 
     Called after the single-instance lock. Settings, wallpapers and history are
@@ -42,7 +42,7 @@ def initialize_installed_assets():
         source = PROJECT_ROOT / "defaults" / folder
         if not source.is_dir():
             continue
-        target = data_root() / folder
+        target = Path(data_directory if data_directory is not None else data_root()) / folder
         target.mkdir(parents=True, exist_ok=True)
         for item in sorted(source.iterdir()):
             if not item.is_file() or (item.suffix.lower() != ".png" and item.name != "readme.txt"):

@@ -12,7 +12,7 @@ from PIL import Image, ImageTk
 from .settings import SettingsStore
 from .src.app_sources import app_source, ICON_ROOT
 from .src.lifecycle import InstanceLock
-from .src.paths import initialize_installed_assets, PROJECT_ROOT, is_installed
+from .src.paths import initialize_installed_assets, PROJECT_ROOT
 from .src.startup import StartupManager
 from .src.desktop import DesktopHost, notify_existing, stop_existing
 from .src.display_history import DisplayHistory
@@ -31,6 +31,7 @@ from .music.play.catalog import sound_files, sound_label
 from .music.play.preview import SoundPreview
 from .tasks.service import TaskService
 from .phone.service import PhoneService
+from .remote.owner import OwnerBridge, AgentGate, execute_agent
 
 INK = "#1c2940"
 MUTED = "#7b8597"
@@ -42,7 +43,9 @@ class MonitorApp:
         self.root = root
         self.store = store or SettingsStore()
         self.hub = hub or SourceHub(self.store.snapshot)
-        self.phone = PhoneService(self.store.root)
+        self.remote_owner = OwnerBridge()
+        self.agent_gate = AgentGate(self.store.root)
+        self.phone = PhoneService(self.store.root, owner=self.remote_owner, config=self.store.snapshot()['phone'])
         self.peers = PeerService(self.store.root)
         self.peer_executor = ThreadPoolExecutor(max_workers=1,thread_name_prefix="solo-owner-command")
         self.peer_job = None
@@ -74,12 +77,13 @@ class MonitorApp:
         self.s = lambda value: round(value*self.scale)
         root.title("Bright Moon Monitor")
         root.configure(bg="white")
+        # The external brand, compact card and author footer form one stack.
         root.geometry(f"{self.s(812)}x{self.s(712)}")
         root.minsize(self.s(792), self.s(690))
         self.font = ("Microsoft YaHei UI", -self.s(13))
         self.small = ("Microsoft YaHei UI", -self.s(11))
         self.bold = ("Microsoft YaHei UI", -self.s(14), "bold")
-        self.icon = ImageTk.PhotoImage(Image.open(ICON_ROOT / "MonitorSolo_logo.png"), master=root)
+        self.icon = ImageTk.PhotoImage(Image.open(ICON_ROOT / "LOGO.png"), master=root)
         root.iconphoto(True, self.icon)
         style = ttk.Style(root)
         style.theme_use("clam")
@@ -99,7 +103,8 @@ class MonitorApp:
                                     background_reader=lambda:self.island_photo,
                                     rope_reader=lambda:self.rope_photo,
                                     cartoon_reader=lambda:self.cartoon_photo,
-                                    view_publisher=self.publish_phone, phone_status=self.phone.snapshot_status,peer_catalog=self.peers.catalog_snapshot)
+                                    view_publisher=self.publish_phone, phone_status=self.phone.snapshot_status,
+                                    peer_catalog=self.peers.catalog_snapshot, peer_status=self.peers.snapshot_status)
         root.protocol("WM_DELETE_WINDOW",self.hide_to_tray)
         self.refresh_status()
         if self.store.warning:
@@ -112,9 +117,11 @@ class MonitorApp:
         self.drain_peer_commands()
 
     def publish_phone(self,snapshot,visible,focus,desktop_visible):
-        # Peer re-sharing remains denied unless explicitly implemented/granted.
-        local=[r for r in visible if not r.get("remote_origin")]
-        self.phone.publish({**snapshot,"runs":[r for r in snapshot.get("runs",[]) if not r.get("remote_origin")]},local,focus,desktop_visible)
+        # The phone is a viewer of this desktop's selected island.  Remote
+        # rows are already sanitized by PeerService; forwarding them here is
+        # read-only and does not grant a transitive command path.
+        phone_visible=[r for r in visible if not r.get("remote_presence")]
+        self.phone.publish({**snapshot,"runs":phone_visible},phone_visible,focus,desktop_visible)
 
     def show_phone_settings(self):
         self.panel.select_tab("remote")
@@ -149,6 +156,7 @@ class MonitorApp:
 
     def drain_peer_commands(self):
         if self.closed:return
+        self.remote_owner.drain(self)
         while not self.peers.owner_commands.empty():
             cmd=self.peers.owner_commands.get_nowait()
             def finish(result,c=cmd):
@@ -170,8 +178,7 @@ class MonitorApp:
                     def work(c=cmd,done=finish):
                         try:
                             if not self.peers.authorized(c):raise ValueError('权限已撤销或操作过期')
-                            self.hub.send_target(c['operation'],c['target'],c['payload'])
-                            done(dict(status='accepted',message='已提交来源，等待实际状态确认'))
+                            done(execute_agent(self.hub,c['operation'],c['target'],c['payload'],lambda:self.peers.authorized(c),self.agent_gate))
                         except ValueError as error:
                             unknown=getattr(error,'code','') in ('DISCONNECTED','BRIDGE_ERROR')
                             done(dict(status='outcome_unknown' if unknown else 'rejected',message='结果待来源核对，请勿重复提交' if unknown else '来源请求已更新或已拒绝'))
@@ -195,6 +202,7 @@ class MonitorApp:
             self.notice(str(error),error=True)
 
     def tasks_changed(self):
+        self.phone.remote.changed()
         self.island._poll()
         self.panel.draw()
 
@@ -238,6 +246,10 @@ class MonitorApp:
     def save(self, **changes):
         try:
             self.store.update(**changes)
+            if changes.get("sound_enabled") is False:
+                # Cancel a preview immediately; event players are gated on the
+                # next poll and never start another clip while muted.
+                self.preview.stop()
             self.notice("已保存")
             return True
         except (OSError, ValueError) as exc:
@@ -394,9 +406,11 @@ class MonitorApp:
         dialog.transient(self.root)
         body = tk.Frame(dialog,bg="white",padx=self.s(24),pady=self.s(24))
         body.pack()
-        self.label(body,"待办任务提示音 · 每轮3遍" if kind=="task" else "Agent 完成提示音 · 1遍",font=self.bold).pack(anchor="w")
+        title = {"task":"待办任务提示音 · 每轮3遍", "peer":"协同设备提醒音 · 1遍"}.get(kind,"Agent 完成提示音 · 1遍")
+        self.label(body,title,font=self.bold).pack(anchor="w")
         self.label(body,"选中后自动保存；试听不会改变当前选择。",font=self.small,color=MUTED).pack(anchor="w",pady=self.s(12))
-        field = "task_reminder_sound" if kind=="task" else "monitor_completion_sound"
+        field = ("task_reminder_sound" if kind=="task" else
+                 "peer_notification_sound" if kind=="peer" else "monitor_completion_sound")
         self.sound_choice = tk.StringVar(value=self.store.snapshot()[field])
         for name in sound_files():
             row = tk.Frame(body,bg="white")
@@ -653,6 +667,7 @@ class MonitorApp:
         self.root.withdraw()
 
     def close(self):
+        self.remote_owner.close()
         if self.closed:
             return
         self.phone.stop()
@@ -678,8 +693,11 @@ class MonitorApp:
 
 
 def attach_desktop(app):
-    icon = (PROJECT_ROOT/"monitor/icon_asset/MonitorSolo.ico" if is_installed()
-            else PROJECT_ROOT/"packaging/assets/MonitorSolo.ico")
+    # Runtime assets ship with source exports as well as frozen installations.
+    # Source execution must not depend on an optional packaging tool directory.
+    icon = PROJECT_ROOT/"monitor/icon_asset/MonitorSolo.ico"
+    if not icon.is_file():
+        raise OSError("缺少 monitor/icon_asset/MonitorSolo.ico，请获取完整的 SOLO 程序文件")
     app.desktop = DesktopHost(app.root,icon,app.show_control_panel,app.close,data_directory=app.store.root)
 
 

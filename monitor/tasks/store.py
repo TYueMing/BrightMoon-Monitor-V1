@@ -118,8 +118,10 @@ class TaskStore:
             db.execute("UPDATE occurrences SET state='expired' WHERE task_id=? AND state IN ('active','snoozed')", (task_id,))
         return self.get(task_id)
 
-    def delete(self, task_id):
+    def delete(self, task_id, *, expected_revision=None):
         with self._db() as db:
+            if expected_revision is not None and self.get(task_id)['revision'] != expected_revision:
+                raise ValueError('任务已更新，请重新打开编辑')
             db.execute("DELETE FROM tasks WHERE id=?", (task_id,))
 
     def poll(self, now=None):

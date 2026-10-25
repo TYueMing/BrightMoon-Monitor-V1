@@ -12,10 +12,18 @@ def normalize(raw=None, *, strict=False):
         if not valid:
             if strict: raise ValueError('电脑协同设置无效')
         else: result[key]=v
+    # Old hidden-display preferences should not make a bound computer invisible.
+    result['show_remote']=True
     return result
 
 GRANTS = dict(view_status=True,view_details=False,reminder_act=False,agent_approve=False,
               agent_answer=False,agent_stop=False,reshare_to_phone=False,anonymous_titles=False)
+
+def trusted_grants():
+    """Binding trusts this computer, not devices transitively connected to it."""
+    return dict(view_status=True, view_details=True, reminder_act=True,
+                agent_approve=True, agent_answer=True, agent_stop=True,
+                reshare_to_phone=False, anonymous_titles=False, sources=None)
 
 def grants(raw=None):
     raw=raw if isinstance(raw,dict) else {}

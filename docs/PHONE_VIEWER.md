@@ -14,7 +14,7 @@
 
 开关、选定网卡、端口和共享偏好自动保存。下次运行 Solo，之前启用的服务会尝试在同一网卡启动；验证码和临时手机会话不保存；电脑确认长期保存的设备，重启后可自动连接。任何启动失败都不会改成监听全部网卡。
 
-![电脑手机访问设置（演示数据）](../preview/phone-settings.png)
+![电脑手机访问设置（演示数据）](../assets/docs/phone-settings.png)
 
 ## 手机上能看到什么
 
@@ -27,9 +27,9 @@
 
 网页不会播放提醒音，不会重复领取待办提醒，不会审批、停止 Agent、执行命令或编辑任务。刷新手机网页不会影响 Agent。任务圈多时可以横向滑动；标题较长会省略，展开后阅读摘要。
 
-![配对页](../preview/phone-pairing-390.png)
-![进度卡片](../preview/phone-progress-390.png)
-![只读待授权](../preview/phone-attention-390.png)
+![配对页](../assets/docs/phone-pairing-390.png)
+![进度卡片](../assets/docs/phone-progress-390.png)
+![只读待授权](../assets/docs/phone-attention-390.png)
 
 图片均来自本地合成任务，不是个人 Agent 数据。
 

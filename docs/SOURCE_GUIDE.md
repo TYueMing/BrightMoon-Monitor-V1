@@ -28,7 +28,8 @@ py -3 -m venv .venv
 - `monitor/deepseek_monitor/`：Harness 日志、交互桥、授权/问题状态合并、专属详情。`bridge/` 是可选 Node 交互桥，普通日志监控不要求安装它。
 - `monitor/opencode_monitor/`：本地数据库读取、服务发现、实时客户端、状态补全及专属详情。
 - `monitor/UI/`：共享胶囊、动画、任务圈、任务选择、授权展示、背景和挂件；`detail_panels.py` 以 `app_id` 注册可信详情渲染器，各 Agent 的业务阶段不写死在共享胶囊里。
-- `monitor/phone/`：局域网只读手机实况、配对与最多三台长期设备、受鉴权的个性化图片、SSE 状态同步，以及桌面远程连接页和手机网页。使用说明见 [手机实况](PHONE_VIEWER.md)。
+- `monitor/phone/`：局域网手机实况、配对与最多三台长期设备、受鉴权的个性化图片、SSE 状态同步，以及桌面远程连接页和手机网页。使用说明见 [手机实况](PHONE_VIEWER.md)。
+- `monitor/remote/`：HTTPS 身份、设备权限、任务目录与版本校验、共享 AgentGate、命令回执；手机网页在权限允许时可编辑提醒和处理本机来源操作，协同来源只读。
 - `monitor/tasks/`：本地任务 SQLite 存储、日历/间隔调度、提醒生命周期与声音领取；`monitor/UI/tasks/` 提供列表、编辑弹窗和提醒详情。
 - `monitor/src/task_identity.py`、`task_presentation.py`、`display_history.py` 与 `monitor/UI/task_lifetime.py`：任务身份、状态呈现、持久去重和独立退场。退场是撤下监控卡片，不等于停止来源 Agent。
 - `monitor/settings.py`、`monitor/src/paths.py`：配置校验与保存、源码/安装版路径分离。源码写本地 `data/`，安装版写 `%LOCALAPPDATA%/MonitorSolo/data`。
@@ -69,6 +70,8 @@ flowchart TD
 按钮不直接写 Agent 日志或数据库。操作前重新核对任务是否仍有效、连接是否正常、动作是否可用，以及提供时的确认 ID 与版本；具体协议的防重和过期检查继续由适配器/来源负责。只有日志的连接不能伪装成可审批。该监控层不是执行沙箱，也不替代 Agent 自身权限判断。
 
 ## 测试
+
+> 2026-10-25 本次发布仅同步应用源码与文档，仓库已有测试和打包文件未更新。下方是开发工作区的测试方法，不能将仓库历史测试视为覆盖本次新增功能。
 
 在源码根目录执行，建议使用 Windows 桌面会话以覆盖 Tk 原生界面：
 

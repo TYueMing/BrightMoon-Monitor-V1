@@ -11,7 +11,7 @@ import time
 import uuid
 from urllib.parse import urlsplit
 from aiohttp import web, ClientSession, ClientTimeout, Fingerprint, WSMsgType, ClientWSTimeout
-from .config import normalize, grants
+from .config import normalize, grants, trusted_grants
 from .identity import Identity
 from .store import Store
 from .protocol import validate, project, remote_run, digest, MAX_MESSAGE, FINAL, OPERATIONS, validate_items
@@ -42,8 +42,13 @@ class PeerService:
         with self.lock: self.local=deepcopy(snapshot); self.sample_at=time.monotonic()
 
     def start(self, config):
-        if self.thread and self.thread.is_alive(): raise ValueError('请先关闭电脑协同，等待服务退出')
+        if self.thread and self.thread.is_alive():
+            if not self.stop_event.is_set() and normalize(config,strict=True)==self.config:return
+            raise ValueError('请先关闭电脑协同，等待服务退出后保存新设置')
         self.config=normalize(config,strict=True); self.stop_event.clear()
+        # A deliberate new service session starts clean; transient worker
+        # restarts below retain their offline catalog until it can refresh.
+        self.catalog={};self.received={};self.baseline={};self.completed={};self.timers={}
         self.generation=uuid.uuid4().hex
         for channel in (self.mailbox,self.owner_commands):
             while not channel.empty():channel.get_nowait()
@@ -53,8 +58,11 @@ class PeerService:
 
     def stop(self):
         self.stop_event.set()
-        with self.lock: self.remote=[];self.current_tasks=[]
-        self.report(state='stopped',message='电脑协同已关闭',pending=[],invite='',address='')
+        with self.lock:
+            self.remote=[];self.current_tasks=[]
+            peers=[dict(p,online=False,connection_message='协同已关闭 · 绑定仍保留')
+                   for p in self.state.get('peers',[])]
+        self.report(state='stopped',message='电脑协同已关闭',peers=peers,pending=[],invite='',address='')
 
     def command(self, kind, value=None):
         if not self.thread or not self.thread.is_alive() or self.stop_event.is_set(): raise ValueError('请先开启电脑协同')
@@ -68,11 +76,44 @@ class PeerService:
         return dict(command_id=id,status='accepted')
 
     def _thread(self):
-        try: asyncio.run(self._run())
-        except Exception as e:
-            self.report(state='error',message=str(e) if isinstance(e,(ValueError,OSError)) else '电脑协同失败，请检查依赖、端口和设备数据')
-        finally:
-            with self.lock: self.remote=[];self.current_tasks=[]
+        # A transient Wi-Fi loss must not permanently disable a saved binding.
+        while not self.stop_event.is_set():
+            try:
+                asyncio.run(self._run())
+            except Exception as e:
+                if self.stop_event.is_set(): break
+                reason=str(e) if isinstance(e,(ValueError,OSError)) else '请检查依赖和设备数据'
+                # Keep the last catalog visible as an explicitly offline
+                # snapshot while the transport is being rebuilt.  Clearing
+                # it here made the island collapse for one polling frame and
+                # looked like a binding failure, even though the durable
+                # peer identity and credentials were still valid.
+                with self.lock:
+                    self.remote = [dict(run, connection_error=True,
+                                        remote_connection_message='来源失联 · 自动重连')
+                                   for run in self.remote]
+                    self.current_tasks = [dict(run, connection_error=True,
+                                               remote_connection_message='来源失联 · 自动重连')
+                                          for run in self.current_tasks]
+                    peers = [dict(peer, online=False,
+                                   connection_message='对方暂时离线 · 自动重连')
+                             for peer in self.state.get('peers', [])]
+                self.report(state='reconnecting',message='等待网络恢复，自动重试 · '+reason,
+                             address='',invite='',pending=[],peers=peers)
+            finally:
+                # `stop()` already clears these collections for an explicit
+                # shutdown.  During reconnect they intentionally remain as
+                # offline records so the UI can transition without a blank
+                # frame and TaskLifetime can apply its normal grace period.
+                if self.stop_event.is_set():
+                    with self.lock: self.remote=[];self.current_tasks=[]
+            if self.stop_event.wait(5): break
+
+    def _choose_interface(self, interfaces):
+        config=self.config
+        if not config['interface_id'] and len(interfaces)==1:
+            config={**config,'interface_id':interfaces[0].id}
+        return choose(config,interfaces)
 
     def _address(self, address):
         parsed=urlsplit(address)
@@ -91,7 +132,8 @@ class PeerService:
         for id,p in self.store.peers().items():
             online=bool(id in self.connections and now-self.received.get(id,0)<15)
             rows.append(dict(id=id,name=p['name'],address=p['address'],online=online,grants=p['grants'],fingerprint=p['fingerprint'],
-                omitted_count=getattr(self,'omitted',{}).get(id,0),paused=p.get('paused',False)))
+                omitted_count=getattr(self,'omitted',{}).get(id,0),paused=p.get('paused',False),
+                connection_message='' if online else getattr(self,'connection_errors',{}).get(id,'等待对方上线，自动重连')))
             age=now-self.received.get(id,now)
             for item in self.catalog.get(id,[]):
                 since=self.completed.setdefault((id,item['id']),now) if item['status'] in FINAL else now
@@ -113,30 +155,37 @@ class PeerService:
         self.report(peers=rows,pending=[dict(id=k,name=v['peer']['name'],code=v['code'],direction=v['direction'],approved=v.get('approved',False)) for k,v in self.pending.items() if not v.get('saved')])
 
     async def _run(self):
-        self.interface=choose(self.config,await asyncio.to_thread(self.discovery))
+        self.interface=self._choose_interface(await asyncio.to_thread(self.discovery))
+        self.generation=uuid.uuid4().hex
         self.identity=await asyncio.to_thread(self.identity_factory,self.root)
+        # Device keys are permanent; the publisher incarnation is not. A cold
+        # restart rehydrates adapters and must establish a new stream baseline.
+        self.stream_epoch=uuid.uuid4().hex
         self.store=Store(self.root/'peers.sqlite3',codec=self.identity.codec)
+        self.store.upgrade_bindings()
         self.address=f'https://{self.interface.address}:{self.config["port"]}'
         self.authority=urlsplit(self.address).netloc
-        self.connections={}; self.directions={}; self.received={}; self.catalog={}; self.baseline={}; self.completed={}; self.producer_age={}; self.timers={}; self.pending_out={}; self.command_busy=set(); self.capabilities={}; self.remote_capabilities={}; self.rate={}; self.dialing=set()
+        self.connections={}; self.directions={}; self.producer_age={}; self.pending_out={}; self.command_busy=set(); self.capabilities={}; self.remote_capabilities={}; self.rate={}; self.dialing=set()
         self.pending={}; self.invitation=None; self.hide_seconds=60; self.jobs=set(); self.retry={}; self.command_waiters={}
         self.omitted={}
+        self.connection_errors={}
         self.session=ClientSession(timeout=ClientTimeout(total=8),trust_env=False)
-        runner=web.AppRunner(self._app(),access_log=None,shutdown_timeout=.5); await runner.setup()
+        runner=web.AppRunner(self._app(),access_log=None,shutdown_timeout=.5)
         try:
+            await runner.setup()
             await web.TCPSite(runner,self.interface.address,self.config['port'],ssl_context=self.identity.context).start()
             self.report(state='running',message='已开启 · 加密双向连接',address=self.address,device=self._peer())
             checked=time.monotonic()
             while not self.stop_event.is_set():
                 now=time.monotonic()
                 if now-checked>10:
-                    current=choose(self.config,await asyncio.to_thread(self.discovery))
-                    if current!=self.interface: raise ValueError('私人网络已改变，请重新选择网卡')
+                    current=self._choose_interface(await asyncio.to_thread(self.discovery))
+                    if current!=self.interface: raise ValueError('网络地址已改变，正在重新监听')
                     checked=now
                 while not self.mailbox.empty():
                     kind,value=self.mailbox.get_nowait()
                     try: await self._control(kind,value)
-                    except (ValueError,OSError,KeyError): self.report(message='操作失败：请检查邀请、设备状态或权限')
+                    except (ValueError,OSError,KeyError) as error: self.report(message='操作未完成：'+(str(error) if isinstance(error,ValueError) and str(error) else '邀请已过期或设备状态已改变'))
                 for key in list(self.pending):
                     if now>self.pending[key]['expires']: self.pending.pop(key,None)
                 for id,p in self.store.peers().items():
@@ -152,7 +201,9 @@ class PeerService:
                 self._summary()
                 await asyncio.sleep(.1)
         finally:
-            self.stop_event.set()
+            # Do not erase the last status during a transient restart.  The
+            # worker loop marks rows offline and retries with the same saved
+            # device identity.  Explicit `stop()` publishes the stopped state.
             for ws in list(self.connections.values()): await ws.close()
             for job in list(self.jobs): job.cancel()
             await asyncio.gather(*list(self.jobs),return_exceptions=True)
@@ -206,17 +257,19 @@ class PeerService:
         body=validate(await request.json()); v=self.pending.get(body.get('ticket'))
         if not v or v['direction']!='incoming' or time.monotonic()>v['expires']: raise ValueError()
         if not v['approved']: return web.json_response(dict(ready=False))
-        p={**v['peer'],'outbound':v['outbound'],'inbound_hash':digest(v['inbound']),'grants':v['grants']}
+        p={**v['peer'],'outbound':v['outbound'],'inbound_hash':digest(v['inbound']),'grants':v['grants'],'binding_version':1}
         if not v.get('saved'):self.store.save_peer(p);v['saved']=True
         return web.json_response(dict(ready=True,token=v['inbound'],peer=self._peer()))
 
     async def _control(self,kind,value):
         if kind=='invite':
-            token=secrets.token_urlsafe(32); self.invitation=dict(token=token,expires=time.monotonic()+120)
-            self.report(invite=json.dumps({**self._peer(),'invite':token},ensure_ascii=False),message='邀请 120 秒有效；请通过可信渠道发送')
+            token=secrets.token_urlsafe(32); self.invitation=dict(token=token,expires=time.monotonic()+300)
+            self.report(invite=json.dumps({**self._peer(),'invite':token},ensure_ascii=False),message='邀请 5 分钟有效；另一台电脑粘贴后，本机确认一次即可绑定')
         elif kind=='join': self._spawn(self._join(value))
         elif kind=='approve':
-            v=self.pending[value['id']]; v['grants']=grants(value.get('grants')); v['approved']=True
+            v=self.pending.get(value['id'])
+            if not v:return
+            v['grants']=trusted_grants(); v['approved']=True
             if v['direction']=='outgoing' and not v.get('finishing'):
                 v['finishing']=True;self._spawn(self._finish_pair(value['id']))
         elif kind=='reject': self.pending.pop(value,None)
@@ -225,6 +278,14 @@ class PeerService:
             self.pending={k:v for k,v in self.pending.items() if v['peer']['id']!=value}
             ws=self.connections.get(value)
             if ws: await ws.send_json(dict(type='revoked')); await ws.close()
+        elif kind=='address':
+            p=self.store.peers()[value['id']]
+            p['address']=self._address(value['address'])
+            # Updating location never updates the pinned identity or credentials.
+            self.store.save_peer(p);self.retry[p['id']]=0
+            ws=self.connections.get(p['id'])
+            if ws:await ws.close()
+            self.report(message='地址已更新，正在验证原设备身份并重连')
         elif kind=='grants':
             p=self.store.peers()[value['id']]; p['grants']=grants(value['grants']); self.store.save_peer(p)
             self.store.clear_projection(p['id']);self.capabilities.pop(p['id'],None);self._summary()
@@ -253,9 +314,10 @@ class PeerService:
                 data=await response.json()
             if data['peer']['id']!=invitation['id'] or data['peer']['fingerprint']!=invitation['fingerprint']: raise ValueError()
             self.pending[data['ticket']]=dict(peer=data['peer'],code=data['code'],direction='outgoing',
-                expires=time.monotonic()+120,inbound=token,approved=False)
-            self.report(message='请在两台电脑核对相同校验码，然后分别确认共享权限')
-        except Exception: self.report(message='加入失败：邀请过期、指纹不符或设备不可达')
+                expires=time.monotonic()+120,inbound=token,approved=True,grants=trusted_grants(),finishing=True)
+            self._spawn(self._finish_pair(data['ticket']))
+            self.report(message='等待对方确认绑定；双方核对码一致后，将自动双向协同')
+        except Exception as error: self.report(message=self._connection_error(error,'加入失败'))
 
     async def _finish_pair(self,key):
         v=self.pending[key]; peer=v['peer']
@@ -264,11 +326,26 @@ class PeerService:
                 async with self.session.post(self._address(peer['address'])+'/peer/v1/confirm',json={'ticket':key},ssl=Fingerprint(bytes.fromhex(peer['fingerprint']))) as response:
                     if response.status!=200: raise ValueError()
                     data=await response.json()
+                # Reject/delete can run while the confirmation request is in flight.
+                if key not in self.pending or self.stop_event.is_set():return
                 if data['ready']:
-                    self.store.save_peer({**peer,'outbound':data['token'],'inbound_hash':digest(v['inbound']),'grants':v['grants']})
-                    self.pending.pop(key,None); self.report(message='配对完成 · 两个共享方向独立授权'); return
+                    self.store.save_peer({**peer,'outbound':data['token'],'inbound_hash':digest(v['inbound']),'grants':v['grants'],'binding_version':1})
+                    self.pending.pop(key,None); self.report(message='绑定完成 · 在线自动双向协同，删除设备可撤销'); return
                 await asyncio.sleep(1)
-        except Exception: self.report(message='配对未完成，请重新生成邀请')
+            self.pending.pop(key,None)
+            self.report(message='绑定确认超时，请重新生成邀请')
+        except Exception as error: self.report(message=self._connection_error(error,'绑定未完成'))
+
+    @staticmethod
+    def _connection_error(error, prefix='连接失败'):
+        from aiohttp import ServerFingerprintMismatch, ClientConnectorError, WSServerHandshakeError
+        if isinstance(error,ServerFingerprintMismatch):reason='设备身份不匹配，请核对电脑后重新绑定'
+        elif isinstance(error,WSServerHandshakeError) and error.status==401:reason='对方未识别此绑定，请核对是否使用原数据目录或已移除绑定'
+        elif isinstance(error,WSServerHandshakeError) and error.status in (409,503):reason='对方正在重启或已有连接，自动重试，无需重新绑定'
+        elif isinstance(error,asyncio.TimeoutError):reason='连接超时，请检查对方是否开启协同、专用网络防火墙及 Wi-Fi 隔离'
+        elif isinstance(error,ClientConnectorError):reason='无法连接对方，请检查地址、端口和对方协同开关'
+        else:reason='连接暂时中断，保留绑定并自动重试' if prefix=='连接失败' else '邀请过期、被拒绝或设备信息无效，请重新生成邀请'
+        return prefix+'：'+reason
 
     async def _accept(self,request):
         id=request.headers.get('X-Solo-Device'); p=self.store.peers().get(id)
@@ -277,32 +354,40 @@ class PeerService:
         if id in self.connections and (self.identity.id<id or not self.directions.get(id)):raise web.HTTPConflict()
         ws=web.WebSocketResponse(heartbeat=5,receive_timeout=15,max_msg_size=MAX_MESSAGE)
         await ws.prepare(request)
-        await ws.send_json(dict(type='authenticated',token=p['outbound'],device=self.identity.id))
-        await self._connection(ws,p)
+        await ws.send_json(dict(type='authenticated',token=p['outbound'],device=self.identity.id,features=['endpoint-v1']))
+        await self._connection(ws,p,endpoint_updates=request.headers.get('X-Solo-Features')=='endpoint-v1')
         return ws
 
     async def _dial(self,p):
         try:
             async with self.session.ws_connect(self._address(p['address'])+'/peer/v1/ws',ssl=Fingerprint(bytes.fromhex(p['fingerprint'])),
-                headers={'X-Solo-Device':self.identity.id,'Authorization':'Bearer '+p['outbound']},heartbeat=5,timeout=ClientWSTimeout(ws_receive=15,ws_close=2),max_msg_size=MAX_MESSAGE) as ws:
+                headers={'X-Solo-Device':self.identity.id,'Authorization':'Bearer '+p['outbound'],'X-Solo-Features':'endpoint-v1'},heartbeat=5,timeout=ClientWSTimeout(ws_receive=15,ws_close=2),max_msg_size=MAX_MESSAGE) as ws:
                 hello=await ws.receive_json(timeout=5)
                 if hello.get('device')!=p['id'] or not secrets.compare_digest(digest(hello.get('token','')),p['inbound_hash']): raise ValueError()
-                await self._connection(ws,p,outgoing=True)
-        except Exception: pass
+                await self._connection(ws,p,outgoing=True,endpoint_updates='endpoint-v1' in hello.get('features',[]))
+        except Exception as error:
+            if p['id'] not in self.connections:
+                self.connection_errors[p['id']]=self._connection_error(error)
         finally:self.dialing.discard(p['id'])
 
-    async def _connection(self,ws,p,*,outgoing=False):
+    async def _connection(self,ws,p,*,outgoing=False,endpoint_updates=False):
         id=p['id']
+        if id not in self.store.peers() or self.stop_event.is_set():
+            await ws.close();return
         previous=self.connections.get(id)
         preferred=(self.identity.id<id)==outgoing
         if previous and (not preferred or self.directions.get(id)==outgoing):await ws.close();return
         self.connections[id]=ws; self.received[id]=time.monotonic()
+        self.connection_errors.pop(id,None)
         self.directions[id]=outgoing
         if previous:await previous.close()
         self.pending={k:v for k,v in self.pending.items() if not(v['peer']['id']==id and v.get('saved'))}
         sender=self._spawn(self._publish(ws,p))
+        # Exchange current addresses only after mutual authentication. If one
+        # address changes, the surviving direction repairs the saved endpoint.
         messages=[]
         try:
+            if endpoint_updates:await ws.send_json(dict(type='endpoint',address=self.address))
             async for msg in ws:
                 if msg.type!=WSMsgType.TEXT: break
                 now=time.monotonic();messages=[t for t in messages if now-t<5];messages.append(now)
@@ -335,6 +420,11 @@ class PeerService:
                     for row in rows:self.timers[(id,row['id'])]=[row.get('elapsed_ms',0)/1000,time.monotonic(),row.get('elapsed_ms',0)/1000]
                     await ws.send_json(dict(type='receipt',seq=value['seq']))
                 elif kind=='heartbeat': self.producer_age[id]=value.get('producer_age',0)
+                elif kind=='endpoint':
+                    address=self._address(value.get('address',''))
+                    current=self.store.peers().get(id)
+                    if current and current['address']!=address:
+                        self.store.save_peer({**current,'address':address})
                 elif kind=='command':
                     if id in self.command_busy:
                         await ws.send_json(dict(type='command.result',id=value.get('id'),entity=value.get('entity'),
@@ -356,7 +446,8 @@ class PeerService:
                     if kind=='revoked':self.store.remove_peer(id)
                     break
                 elif kind!='receipt': raise ValueError()
-        except (ValueError,KeyError,TypeError): pass
+        except (ValueError,KeyError,TypeError):
+            self.connection_errors[id]='状态同步异常，正在重新同步；绑定仍保留'
         finally:
             sender.cancel(); await asyncio.gather(sender,return_exceptions=True)
             if self.connections.get(id) is ws: self.connections.pop(id,None)
@@ -375,7 +466,7 @@ class PeerService:
             capabilities=self._issue_capabilities(p['id'],rows) if age<5 else {}
             omitted=max(0,len(targets)-len(rows))
             if seq!=last:
-                await asyncio.wait_for(ws.send_json(dict(type='snapshot',schema=1,origin=self.identity.id,epoch=self.identity.epoch,policy_revision=current.get('policy_revision',1),seq=seq,items=rows,producer_age=age,capabilities=capabilities,omitted_count=omitted,truncated=bool(omitted))),5)
+                await asyncio.wait_for(ws.send_json(dict(type='snapshot',schema=1,origin=self.identity.id,epoch=self.stream_epoch,policy_revision=current.get('policy_revision',1),seq=seq,items=rows,producer_age=age,capabilities=capabilities,omitted_count=omitted,truncated=bool(omitted))),5)
                 last=seq; heartbeat=now
             elif now-heartbeat>=2:
                 await asyncio.wait_for(ws.send_json(dict(type='heartbeat',producer_age=age,capabilities=capabilities)),5); heartbeat=now

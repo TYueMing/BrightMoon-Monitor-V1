@@ -54,7 +54,12 @@ class PhoneProjector:
         return hmac.new(self.secret, task_identity(run).encode(), hashlib.sha256).hexdigest()
 
     def task(self, run, private, index):
-        app_id = run.get("app_id") if run.get("app_id") in NAMES else "unknown"
+        # A trusted peer row is read-only, but it still uses the provider's
+        # presentation rules (Codex/Claude/etc.) instead of appearing as an
+        # anonymous unknown task on the phone.
+        remote = bool(run.get("remote_origin"))
+        app_id = run.get("remote_source") if remote else run.get("app_id")
+        app_id = app_id if app_id in NAMES else "unknown"
         status = state(run.get("status"))
         final = status in FINAL
         summary = text(run.get("summary_preview") or run.get("error") or run.get("message") or run.get("task_summary")) if not private else ""
@@ -123,14 +128,19 @@ class PhoneProjector:
                                    "text": "\n".join(text(q.get("question") or q.get("prompt") or q.get("header") or q.get("title"), 200) for q in questions)})
         if run.get("connection_error"):
             attention = None
-        return {"task_key": self.key(run), "app_id": app_id, "source": NAMES.get(app_id, "其他来源"),
+        source = NAMES.get(app_id, "其他来源")
+        if remote:
+            source = "协同 · " + str(run.get("remote_name") or "电脑") + " · " + source
+        return {"task_key": self.key(run), "app_id": app_id, "source": source,
                 "title": f"{NAMES.get(app_id, '任务')} · {index+1}" if private else text(run.get("task_summary") or run.get("title") or NAMES.get(app_id, "任务"), 120),
                 "status": status, "connection_state": "error" if run.get("connection_error") else "ready",
                 "reminder_due_at_ms": timestamp(mapping(run.get("reminder")).get("due_at"))*1000 or None if app_id == "solo_task" else None,
                 "timer": {"started_at_ms": timestamp(run.get("started_at"))*1000 or None,
                           "ended_at_ms": timestamp(run.get("ended_at") or run.get("updated_at"))*1000 if final else None,
                           "final": final, "basis": "observed" if info.get("time_basis") == "observed" else "reported"},
-                "summary": summary, "chain": chain(run, private), "detail_blocks": blocks, "attention": attention}
+                "summary": summary, "chain": chain(run, private), "detail_blocks": blocks, "attention": attention,
+                "origin": "remote" if remote else "local", "read_only": remote,
+                "device_name": run.get("remote_name", "") if remote else ""}
 
     def project(self, snapshot, visible, focus, desktop_visible, policy):
         private = policy["privacy_mode"] == "status_only"

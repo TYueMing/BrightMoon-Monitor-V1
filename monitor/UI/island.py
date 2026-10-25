@@ -271,7 +271,12 @@ class DynamicIsland:
         if not self._animation or self._closed:
             return
         anim = self._animation
+        # Timer jitter can leave a synthetic final frame at 0.99999 and keep
+        # the animation alive for one extra callback. Treat the final 0.1%
+        # as settled so stage transitions are deterministic.
         t = min(1.0, (time.monotonic() - anim["at"]) / SPRING_SECONDS)
+        if t >= .999:
+            t = 1.0
         ease = spring_progress(t)
         w, h = (round(a + (b - a) * ease) for a, b in zip(anim["start"], anim["target"]))
         w, h = max(self.MINI_HEIGHT if self._opening else 240,w), max(48,h)
@@ -505,6 +510,7 @@ class DynamicIsland:
         # rejected. A connection failure must not pin the last task forever.
         now = time.time()
         new_batch = self.selection.update(self.snapshot, expanded=self.expanded, now=now)
+        new_batch = self._selection_updated(new_batch)
         idle = self._is_idle()
         entering_idle = idle and not self._resident_empty
         self._resident_empty = idle
@@ -587,6 +593,10 @@ class DynamicIsland:
         finally:
             self._schedule("poll", 400, self._poll)
 
+    def _selection_updated(self, new_batch):
+        """Let shells reconcile their catalog before sizing or drawing a frame."""
+        return new_batch
+
     def _reader_unavailable(self) -> None:
         # Preserve identity and preferences so a transient transport outage
         # neither resets the timeout nor exposes cached approval controls.
@@ -612,7 +622,7 @@ class DynamicIsland:
             self._sound_initialized = True
             return
         prefs = normalize_preferences(snapshot.get("preferences"))
-        for run_id in sorted(completed - self._played_completions) if prefs["monitor_sound_enabled"] else ():
+        for run_id in sorted(completed - self._played_completions) if prefs.get("sound_enabled", True) and prefs["monitor_sound_enabled"] else ():
             try:
                 sound = prefs["monitor_completion_sound"]
                 self._completion_player.play(sound)
@@ -703,8 +713,8 @@ class DynamicIsland:
     def draw(self) -> None:
         if self._closed:
             return
-        self._sync_pendant()
         if self._hidden:
+            self._sync_pendant()
             self._approval_details.hide()
             return
         c, (w,h) = self.canvas, self._size
@@ -751,6 +761,10 @@ class DynamicIsland:
                     continue
                 x1,y1,x2,y2 = button["box"]
                 self._rounded(c,x1+2,y1+2,x2-2,y2-2,12,"","#9bbaff",1)
+        # Update the independent pendant only after the complete island frame
+        # has been painted.  Updating it before clearing/drawing the canvas
+        # briefly exposed an empty capsule during the first-state pulse.
+        self._sync_pendant()
 
     def _draw_ring(self, x, y, color, status, *, run=None, focus=0.0, keyboard_focus=False) -> None:
         c = self.canvas

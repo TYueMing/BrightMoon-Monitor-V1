@@ -3,82 +3,117 @@ import json
 import queue
 import threading
 import tkinter as tk
-from tkinter import ttk,messagebox,simpledialog
+from tkinter import ttk
 from PIL import ImageTk
 from ...phone.settings_panel import PhoneSettings
-from ...phone.settings_surface import SettingsSurface
-from ..config import grants
+from ...UI.theme import blend
+from .surface import PeerSurface
 
 class PeerSettings:
     def __init__(self,app,parent):
-        self.app=app;self.window=tk.Frame(parent);self.surface=SettingsSurface(self.window,app.scale)
-        self.closed=False;self.job=None;self.interfaces=[];self.scan_result=queue.Queue();self.key=None;self.show_tasks=False;self.task_page=0
+        self.app=app;self.window=tk.Frame(parent);self.surface=PeerSurface(self.window,app.scale)
+        self.closed=False;self.job=None;self.interfaces=[];self.scan_result=queue.Queue();self.key=None;self.show_tasks=False;self.task_page=0;self.pending_action=None
+        self.form=None;self.form_value=None;self.status_note=''
+        self.scroll_to_form=False
+        self.wheel_binding=app.root.bind('<MouseWheel>',self.wheel,add='+')
         c=self.surface.canvas;s=self.surface;cfg=app.store.snapshot()['peers']
-        s.label(10,6,'电脑协同',20,True)
-        s.label(10,40,'双向查看，分别授权 · 不需要登录 · 仅私人局域网',11)
-        self.name=tk.StringVar(value=cfg['name']);s.widget(ttk.Entry(c,textvariable=self.name),10,75,240)
-        self.show_remote=tk.BooleanVar(value=cfg['show_remote'])
-        self.port=tk.StringVar(value=str(cfg['port']));s.widget(ttk.Entry(c,textvariable=self.port),270,75,90)
-        s.label(365,80,'设备名 / 端口',11)
-        self.interface=ttk.Combobox(c,state='readonly');s.widget(self.interface,10,115,350)
-        s.button(375,115,110,'刷新网卡',self.scan)
-        s.button(10,160,130,'保存并开启',self.start);s.button(155,160,110,'关闭协同',self.stop)
-        s.button(280,160,100,'生成邀请',lambda:self.call('invite'));s.button(390,160,100,'粘贴邀请',self.join)
-        self.message=s.label(10,205,'',11,width=480)
-        s.button(10,255,130,'复制当前邀请',self.copy)
-        s.checkbox(155,259,'在本机显示远程任务',self.show_remote)
-        self.show_remote.trace_add('write',lambda *_:self.toggle_visible())
-        s.button(10,295,150,'全部当前任务 / 设备',self.toggle_tasks)
-        s.button(180,295,90,'上一页',lambda:self.page(-1));s.button(285,295,90,'下一页',lambda:self.page(1))
+        s.label(12,8,'电脑协同',22,True)
+        s.label(12,43,'把另一台电脑的进展，带到眼前。绑定后自动重连。',11)
+        s.card(8,78,480,190)
+        s.label(24,94,'本机连接',14,True)
+        self.name=tk.StringVar(value=cfg['name']);self.port=tk.StringVar(value=str(cfg['port']))
+        s.label(24,124,'设备名称',10);s.label(314,124,'端口',10)
+        s.widget(ttk.Entry(c,textvariable=self.name,style='Peer.TEntry'),24,144,270)
+        s.widget(ttk.Entry(c,textvariable=self.port,style='Peer.TEntry'),314,144,150)
+        self.interface=ttk.Combobox(c,state='readonly',style='Peer.TCombobox')
+        s.widget(self.interface,24,188,310);s.button(350,188,114,'刷新网卡',self.scan)
+        s.button(24,228,125,'保存并开启',self.start,accent=True)
+        s.button(165,228,110,'关闭协同',self.stop)
+        self.message=s.label(12,282,'正在读取连接状态…',11,width=475)
+        s.label(12,342,'添加一台电脑',15,True)
+        s.label(12,370,'在一台电脑生成邀请，在另一台粘贴；核对后确认一次。',11)
+        s.button(12,400,140,'生成邀请',lambda:self.call('invite'),accent=True)
+        s.button(170,400,140,'复制邀请',self.copy)
+        s.button(328,400,150,'绑定电脑',self.join,accent=True)
+        self.form_y=452;self.devices_y=452
         self.scan();self.refresh()
     def layout(self,x,y,width,height,background,foreground,backdrop=None):
         self.window.configure(bg=background);self.surface.set_theme(background,foreground)
         self.window.place(x=round(x),y=round(y),width=round(width),height=round(height))
         self.surface.set_backdrop(backdrop,(round(x),round(y)),(round(width),round(height)))
     def call(self,kind,value=None):
+        if kind in ('invite','join') and self.app.peers.snapshot_status().get('state')!='running':
+            if self.start():self.pending_action=(kind,value)
+            return
+        self.status_note=''
         try:self.app.peers.command(kind,value)
-        except (ValueError,OSError) as e:messagebox.showerror('电脑协同',str(e),parent=self.window)
+        except (ValueError,OSError) as e:self.status_note=str(e)
     def scan(self):
         def work():
             try:self.scan_result.put(self.app.peers.discovery())
             except Exception:self.scan_result.put([])
         threading.Thread(target=work,daemon=True).start()
+    def wheel(self,event):
+        if not self.closed and self.window.winfo_ismapped():
+            self.surface.canvas.yview_scroll(-int(event.delta/120),'units')
     def start(self):
+        self.status_note=''
         try:
             index=self.interface.current()
             if index<0:raise ValueError('请选择私人网络网卡')
-            cfg=dict(enabled=True,show_remote=self.show_remote.get(),interface_id=self.interfaces[index].id,port=int(self.port.get()),name=self.name.get())
-            self.app.store.update(peers=cfg);self.app.peers.start(cfg)
-        except (ValueError,OSError) as e:messagebox.showerror('电脑协同',str(e),parent=self.window)
+            cfg=dict(enabled=True,show_remote=True,interface_id=self.interfaces[index].id,port=int(self.port.get()),name=self.name.get())
+            self.app.peers.start(cfg);self.app.store.update(peers=cfg)
+            return True
+        except (ValueError,OSError) as e:self.status_note=str(e)
     def stop(self):
+        self.pending_action=None
         self.app.store.update(peers={**self.app.store.snapshot()['peers'],'enabled':False});self.app.peers.stop()
-    def toggle_visible(self):
-        self.app.store.update(peers={**self.app.store.snapshot()['peers'],'show_remote':self.show_remote.get()})
     def toggle_tasks(self):self.show_tasks=not self.show_tasks;self.task_page=0;self.key=None
     def page(self,direction):self.task_page=max(0,self.task_page+direction);self.key=None
     def copy(self):
         value=self.app.peers.snapshot_status().get('invite')
-        if value:self.window.clipboard_clear();self.window.clipboard_append(value)
+        if value:
+            self.window.clipboard_clear();self.window.clipboard_append(value);self.status_note='邀请已复制，5 分钟内在另一台电脑粘贴。'
+        else:self.status_note='请先生成邀请。'
+    def open_form(self,title,body,submit,label,initial=None):
+        self.surface.clear_group('form');s=self.surface;c=s.canvas;y=self.form_y
+        self.form=submit;self.form_value=None;self.devices_y=y+238
+        s.card(8,y,480,218,group='form');s.label(24,y+16,title,15,True,group='form')
+        s.label(24,y+47,body,11,width=440,group='form')
+        if initial is not None:
+            self.form_value=tk.Text(c,wrap='word',height=3,relief='flat',borderwidth=0,
+                                   font=('Microsoft YaHei UI',-round(11*self.app.scale)))
+            self.form_value.insert('1.0',initial)
+            s.widget(self.form_value,24,y+96,440,group='form')
+            c.itemconfigure(c.find_withtag('form')[-1],height=round(66*self.app.scale))
+            self.form_value.configure(bg=s.bg,fg=s.foreground,insertbackground=s.foreground)
+        s.button(240,y+174,100,'取消',self.close_form,group='form')
+        s.button(354,y+174,110,label,self.submit_form,group='form',accent=True)
+        self.key=None;self.scroll_to_form=True
+        if self.form_value:self.form_value.focus_set()
+    def close_form(self):
+        self.surface.clear_group('form');self.form=None;self.form_value=None
+        self.devices_y=self.form_y;self.key=None
+    def submit_form(self):
+        callback=self.form
+        value=self.form_value.get('1.0','end').strip() if self.form_value else ''
+        if self.form_value and not value:self.status_note='请填写完整内容。';return
+        self.close_form()
+        if callback:callback(value)
     def join(self):
-        value=simpledialog.askstring('加入电脑','粘贴对方通过可信渠道提供的完整邀请：',parent=self.window)
-        if value:self.call('join',value)
-    def permissions(self,item,pending=False):
-        win=tk.Toplevel(self.window);win.title('核对设备与共享权限');win.transient(self.app.root)
-        tk.Label(win,text=item['name']+'\n'+('双方核对码：'+item['code'] if pending else '设备指纹：'+item['fingerprint']),wraplength=480).pack(padx=20,pady=15)
-        labels={'view_status':'共享任务状态与标题','anonymous_titles':'隐藏任务标题（详情权限另行控制）','view_details':'共享摘要、步骤与工具结果','reminder_act':'允许处理已共享提醒','agent_approve':'允许同意 / 拒绝 Agent 授权','agent_answer':'允许回答支持的 Agent 问题','agent_stop':'允许停止 Agent'}
-        variables={}
-        for key,label in labels.items():
-            v=tk.BooleanVar(value=item.get('grants',grants()).get(key,False));variables[key]=v
-            ttk.Checkbutton(win,text=label,variable=v).pack(anchor='w',padx=20,pady=4)
-        tk.Label(win,text='共享来源（只共享在这里勾选的本机来源）').pack(padx=20,pady=6)
-        source_vars={};selected=item.get('grants',{}).get('sources')
-        for key,label in [('codex','Codex'),('opencode','OpenCode'),('deepseek_harness','DeepSeek'),('claude','Claude Code'),('solo_task','待办提醒')]:
-            v=tk.BooleanVar(value=selected is None or key in selected);source_vars[key]=v
-            ttk.Checkbutton(win,text=label,variable=v).pack(anchor='w',padx=20)
-        tk.Label(win,text='这些权限是本机授予对方的；对方授予本机的权限需在对方设置。',wraplength=440).pack(padx=20,pady=10)
-        def save():
-            self.call('approve' if pending else 'grants',dict(id=item['id'],grants={**{k:v.get() for k,v in variables.items()},'sources':[k for k,v in source_vars.items() if v.get()]}));win.destroy()
-        ttk.Button(win,text='核对一致，确认授权' if pending else '保存权限',command=save).pack(pady=10)
+        self.open_form('绑定另一台电脑','粘贴完整邀请。绑定后共享任务详情，可处理来源支持的授权与提醒。',
+                       lambda value:self.call('join',value),'开始绑定',initial='')
+    def confirm_binding(self,item):
+        self.open_form('确认绑定 · '+item['name'],'双方核对码：'+item['code']+
+                       '\n确认后自动双向协同，删除绑定可撤销。仅绑定自己的或信任的电脑。',
+                       lambda _:self.call('approve',dict(id=item['id'])),'确认绑定')
+    def update_address(self,item):
+        self.open_form('更新地址 · '+item['name'],'填写对方当前的 HTTPS 地址。保留原设备身份与绑定，无需重新配对。',
+                       lambda value:self.call('address',dict(id=item['id'],address=value)),
+                       '保存地址',initial=item['address'])
+    def remove(self,item):
+        self.open_form('删除绑定 · '+item['name'],'删除后将停止共享。对方重启或网络恢复不会重新建立此绑定。',
+                       lambda _:self.call('remove',item['id']),'删除绑定')
     def refresh(self):
         if self.closed:return
         try:self.interfaces=self.scan_result.get_nowait()
@@ -86,32 +121,47 @@ class PeerSettings:
         else:
             self.interface.configure(values=[i.name+' · '+i.address for i in self.interfaces])
             if self.interfaces:self.interface.current(next((n for n,i in enumerate(self.interfaces) if i.id==self.app.store.snapshot()['peers']['interface_id']),0))
-        state=self.app.peers.snapshot_status();self.message.configure(text=state.get('message','')+'\n'+state.get('address',''))
+        state=self.app.peers.snapshot_status();self.message.configure(text=(self.status_note or state.get('message',''))+'\n'+state.get('address',''))
+        if self.pending_action and state.get('state')=='running':
+            action=self.pending_action;self.pending_action=None;self.call(*action)
         tasks=self.app.peers.catalog_snapshot() if self.show_tasks else []
-        key=json.dumps([state.get('peers'),state.get('pending'),self.show_tasks,[(r['run_id'],r['remote_entity']['revision'],r['connection_error']) for r in tasks]],sort_keys=True)
+        key=json.dumps([state.get('peers'),state.get('pending'),self.show_tasks,self.task_page,self.devices_y,[(r['run_id'],r['remote_entity']['revision'],r['connection_error']) for r in tasks]],sort_keys=True)
         if key!=self.key:
-            self.key=key;s=self.surface;s.clear_group('devices');y=340
+            self.key=key;s=self.surface;s.clear_group('devices');y=self.devices_y
+            s.label(12,y,'当前任务' if self.show_tasks else '已绑定设备',15,True,group='devices')
+            s.button(310,y-5,168,'返回设备' if self.show_tasks else '查看全部任务',self.toggle_tasks,group='devices');y+=48
             for item in ([] if self.show_tasks else state.get('pending',[])):
                 s.label(10,y,item['name']+' · 核对码 '+item['code'],group='devices',width=300)
-                s.button(320,y,90,'核对权限',lambda i=item:self.permissions(i,True),group='devices')
+                if item['direction']=='incoming':
+                    s.button(320,y,90,'确认绑定',lambda i=item:self.confirm_binding(i),group='devices')
+                else:s.label(320,y,'等待对方确认',size=11,group='devices')
                 s.button(420,y,65,'拒绝',lambda i=item:self.call('reject',i['id']),group='devices');y+=55
             for item in ([] if self.show_tasks else state.get('peers',[])):
+                s.card(8,y-8,480,100,group='devices')
                 suffix=f" · {item['omitted_count']} 项超过共享上限" if item.get('omitted_count') else ''
                 s.label(10,y,item['name']+' · '+('在线' if item['online'] else '离线')+suffix,group='devices',width=190)
-                s.button(210,y,80,'管理权限',lambda i=item:self.permissions(i),group='devices')
-                s.button(300,y,85,'恢复共享' if item.get('paused') else '暂停共享',lambda i=item:self.call('pause',i['id']),group='devices')
-                s.button(395,y,90,'移除配对',lambda i=item:self.call('remove',i['id']),group='devices');y+=55
+                s.button(275,y,100,'更新地址',lambda i=item:self.update_address(i),group='devices')
+                s.button(395,y,90,'删除绑定',lambda i=item:self.remove(i),group='devices');y+=30
+                s.label(10,y,item.get('connection_message') or '已绑定 · 自动重连，无需再次授权',size=11,group='devices',width=450);y+=75
             if self.show_tasks:
+                s.button(12,y,90,'上一页',lambda:self.page(-1),group='devices')
+                s.button(118,y,90,'下一页',lambda:self.page(1),group='devices');y+=44
                 self.task_page=min(self.task_page,max(0,(len(tasks)-1)//20))
                 for run in tasks[self.task_page*20:(self.task_page+1)*20]:
                     s.label(10,y,run['remote_name']+' · '+run['task_summary'],group='devices',width=330)
                     s.button(365,y,120,'在灵动岛查看',lambda r=run:self.app.island.inspect_remote(r),group='devices');y+=48
                 s.label(10,y,f'共 {len(tasks)} 项 · 第 {self.task_page+1} 页 · 含已退场的最近来源记录',group='devices');y+=35
-            s.label(10,y,'最多配对 5 台电脑；提醒由来源电脑调度，来源离线不自动接管。',size=11,group='devices');s.set_height(y+70)
+            if not self.show_tasks and not state.get('peers') and not state.get('pending'):
+                s.label(24,y,'还没有绑定电脑。完成上方邀请后，它会出现在这里。',11,width=440,group='devices');y+=48
+            s.label(10,y,'最多绑定 5 台电脑；重启后自动恢复。两端需运行新版 SOLO 并开启协同。',size=11,group='devices');s.set_height(y+70)
+        if self.scroll_to_form:
+            self.scroll_to_form=False
+            self.surface.canvas.yview_moveto(max(0,self.form_y-16)/self.surface.height)
         self.job=self.window.after(400,self.refresh)
     def close(self):
         self.closed=True
         if self.job:self.window.after_cancel(self.job)
+        self.app.root.unbind('<MouseWheel>',self.wheel_binding)
         self.window.destroy()
 
 class RemoteSettings:
@@ -119,10 +169,38 @@ class RemoteSettings:
         self.app=app;self.window=tk.Frame(parent);self.parent=parent;self.mode='phone';self.children={}
         self.bar=tk.Canvas(self.window,highlightthickness=0,borderwidth=0);self.bar.pack(fill='both',expand=True)
         self.bar_image=self.bar.create_image(0,0,anchor='nw');self.bar_key=None;self.bar_photo=None
-        for i,(name,mode) in enumerate([('手机访问','phone'),('电脑协同','peers')]):
-            button=ttk.Button(self.bar,text=name,command=lambda value=mode:self.select(value))
-            self.bar.create_window(i*110*app.scale,0,anchor='nw',window=button,width=108*app.scale,height=30*app.scale)
+        self.tabs=[('设备服务','phone'),('电脑协同','peers')]
+        self.tab_boxes=[];self.bar.configure(takefocus=True,cursor='hand2')
+        self.bar.bind('<Button-1>',self._tab_click)
+        for key in ('Left','Right','space','Return'):
+            self.bar.bind('<'+key+'>',self._tab_key)
         self.geometry=None
+
+    def _tab_click(self,event):
+        self.bar.focus_set()
+        for box,mode in self.tab_boxes:
+            if box[0] <= event.x <= box[2] and box[1] <= event.y <= box[3]:
+                self.select(mode);return
+
+    def _tab_key(self,event):
+        self.select('peers' if self.mode=='phone' else 'phone')
+        return 'break'
+
+    def _draw_bar(self,background,foreground):
+        c=self.bar;s=self.app.scale;c.delete('peer_tab');self.tab_boxes=[]
+        # A compact segmented control keeps the page on the same wallpaper
+        # surface as the settings card; native ttk buttons otherwise paint a
+        # second opaque gray/white strip over the wallpaper.
+        for i,(name,mode) in enumerate(self.tabs):
+            x=10+i*122;y=3;w=116;h=29
+            fill=blend(background,foreground,.16 if mode==self.mode else .07)
+            c.create_polygon(*[v*s for p in ((x+10,y),(x+w-10,y),(x+w,y+10),(x+w,y+h-10),
+                                               (x+w-10,y+h),(x+10,y+h),(x,y+h-10),(x,y+10)) for v in p],
+                             smooth=True,fill=fill,outline='',tags='peer_tab')
+            c.create_text((x+w/2)*s,(y+h/2)*s,text=name,fill=foreground,
+                          font=('Microsoft YaHei UI',-round(10*s),'bold' if mode==self.mode else 'normal'),
+                          tags='peer_tab')
+            self.tab_boxes.append(((x*s,y*s,(x+w)*s,(y+h)*s),mode))
     def select(self,mode):
         self.mode=mode
         if self.geometry:self.layout(*self.geometry)
@@ -137,6 +215,7 @@ class RemoteSettings:
                 self.bar_photo=ImageTk.PhotoImage(backdrop.crop((key[1],key[2],key[1]+key[3],key[2]+key[4])),master=self.bar)
                 self.bar.itemconfigure(self.bar_image,image=self.bar_photo)
             else:self.bar.itemconfigure(self.bar_image,image='');self.bar_photo=None
+        self._draw_bar(background,foreground)
         if self.mode not in self.children:self.children[self.mode]=(PhoneSettings if self.mode=='phone' else PeerSettings)(self.app,self.parent)
         for mode,child in self.children.items():
             if mode!=self.mode:child.window.place_forget()

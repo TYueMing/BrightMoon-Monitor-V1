@@ -7,7 +7,7 @@
 <p align="center"><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
 
 <p align="center">把 Agent 的进展和日常提醒，放进桌面上的一座小岛。</p>
-<p align="center"><strong>Windows 桌面灵动岛 · 多来源监控 · 本地待办 · 自定义外观</strong></p>
+<p align="center"><strong>Agent 灵动岛 · 多电脑协同 · 手机监控 · 周期提醒</strong></p>
 
 <p align="center">
   <img src="assets/readme/idle-preview.gif" width="440" alt="空闲胶囊显示未来一小时的提醒数量">
@@ -15,12 +15,51 @@
 
 Solo 是独立运行的桌面监控器：集中查看 Agent 的任务状态，在来源支持实时交互时处理授权，也可以只用它管理本地提醒。不需要 BrightMoon 账户，不依赖 BrightMoon 主程序。
 
-**当前版本：0.1.0 · Windows 10（1809+）/ Windows 11 · x64**
+**源码更新：2026-10-25 · 已发布安装包：0.1.0 · Windows x64**
 
 **[下载 Windows 安装包 ZIP](MonitorSolo-0.1.0-windows-x64.zip)** · **[下载校验文件](SHA256SUMS.txt)**
 
 
-**源码更新 · 2026-10-22：**新增 Claude Code 监控与单次授权、多电脑协同、手机在线状态及启动恢复修正。**下方 0.1.0 安装包没有重新打包，新功能请运行源码。**详见 [更新与审查记录](docs/UPDATE_2026-10-22.md) 和 [Claude 接入说明](monitor/claude_monitor/README.md)。
+**源码更新 · 2026-10-25：**同步加密设备服务、手机提醒编辑与授权、电脑绑定与重连优化、灵动岛动画与布局修复，以及新 LOGO。**0.1.0 安装包未重新打包，最新功能请运行源码。** 本次不更新测试与打包文件。见 [本次同步与验证](docs/UPDATE_2026-10-25.md)。详见 [手机连接指南](docs/REMOTE_SERVICE_GUIDE.md) 和 [源码架构](docs/SOURCE_GUIDE.md)。
+
+## 多电脑协同与手机监控
+
+**同一局域网，把电脑上的进展带到另一块屏幕。** 桌面上的「远程连接」直接管理设备服务与电脑协同，不需要另开终端。两项服务都依赖网络可互通；没有公网中继或 NAT 穿透。
+
+### 电脑之间：一次绑定，持续协同
+
+1. 两台电脑都运行最新源码，在「远程连接 → 电脑协同」开启服务。
+2. 一方生成邀请，另一方粘贴邀请；核对相同校验码后确认绑定。
+3. 绑定后双向共享当前任务和来源支持的操作，不必再逐项选择共享权限。Agent 的每次授权仍需人工确认。
+4. 本地长胶囊与远程圆圈并列，点击切换焦点；第二、三态显示所选设备的详情。
+
+绑定与身份持久保存。重启、短暂断网后会重试连接；如果两端保存的地址都失效，需要更新地址，不必删除绑定重来。「个性化 → 通用」可以让在线的已绑定电脑常驻显示；删除绑定会撤销互信。
+
+### 手机：浏览器查看，也能按权限操作
+
+1. 在电脑「远程连接 → 设备服务」选择可信专用网络并开启 HTTPS。
+2. 按指南在手机建立证书信任，打开电脑显示的网址，输入 8 位配对码。
+3. 在电脑选择「长期保存」，最多保存 **3 台设备**。同一地址和浏览器凭据保留时，再次打开可恢复连接。
+4. 电脑可为每台手机单独授予提醒查看、编辑、删除、知晓/暂缓，以及来源支持的 Agent 授权等权限。
+
+手机可以查看本机灵动岛和**远程协同实况**；协同来源在手机上只读。初次配对和 HTTP 兼容模式均为只读；敏感操作需要 HTTPS 与设备权限。编辑提醒支持版本冲突检查，避免覆盖电脑端的新修改。
+
+<p align="center">
+  <img src="assets/readme/phone-live-current.png" width="310" alt="手机浏览器查看实况与待处理请求">
+  <img src="assets/readme/phone-editor-current.png" width="310" alt="手机浏览器编辑周期提醒">
+</p>
+
+> 上图使用示例任务。当前交付的是手机网页，不是原生手机 App；浏览器退出、锁屏或进入后台不保证连接持续，也不提供手机系统后台推送。请按 [手机连接指南](docs/REMOTE_SERVICE_GUIDE.md) 建立证书信任，不要用跳过证书警告替代配置。
+
+详细说明：[电脑协同](monitor/multi_diverse/IMPLEMENTATION.md) · [统一设备服务](monitor/remote/README.md) · [远程接口](monitor/remote/API.md)。
+
+## 最新控制面板
+
+统一使用新的 LOGO；品牌栏与控制面板保持相邻，布局随窗口尺寸调整。增加声音总开关、协同设备提示音和在线协同设备常驻选项；手机在线提示与空闲文字分开，减少闪烁与遮挡。
+
+<p align="center">
+  <img src="assets/readme/monitor-current.png" width="740" alt="最新监控面板和品牌布局">
+</p>
 
 ## 壁纸与桌面效果
 
@@ -44,7 +83,7 @@ Solo 是独立运行的桌面监控器：集中查看 Agent 的任务状态，�
 - **弹簧开合**：从胶囊展开卡片，壁纸随展开显示更多区域。
 - **悬挂卡通**：自选图片与横向位置；点击挂件也能触发展开，伴随轻拉和渐入动画。
 - **空闲角色**：独立控制开关，支持上传带透明背景的 PNG / WebP 抠图。
-- **声音**：在「个性化 → 声音」选择并试听提示音。
+- **声音**：在「个性化 → 声音」选择并试听提示音，包含声音总开关与协同设备提示音。
 
 <p align="center">
   <img src="assets/readme/appearance.png" width="720" alt="个性化外观设置：面板颜色、灵动岛背景和透明度">
@@ -70,6 +109,8 @@ Solo 是独立运行的桌面监控器：集中查看 Agent 的任务状态，�
 > 此处任务预览用于展示布局和交互，请以所连接 Agent 实际提供的信息为准。
 
 ## 支持哪些 Agent？
+
+- **Claude Code**：通过本机 Hook 监控受支持的桌面 Code 标签与 CLI 会话，显示观察到的阶段、工具结果、子 Agent、压缩与摘要；可选单次授权默认关闭。先在来源设置安装 Hook，再开始新的 Code 会话。不支持普通 Chat / Cowork 或远端执行会话。
 
 - **Codex**：读取本机会话日志，并尝试发现本机 App Server。审批需要连接到任务所在的同一实时服务，且服务提供相应操作能力。仅能读取日志时，不提供可用的审批入口。
 - **OpenCode**：通过本地数据库读取状态；授权、回答和停止等交互依赖可连接的实时服务与对应能力。
@@ -152,7 +193,7 @@ Solo 不包含这些 Agent 本身，也不提供它们的账号、模型服务�
 
 ### 从源码启动
 
-需要 Windows x64、Python 3.10+（含 Tkinter），推荐官方 Python。当前发行构建与源码检查使用 CPython 3.13.16。
+需要 Windows x64、Python 3.10+（含 Tkinter），推荐官方 Python。依赖版本以 `requirements.txt` 为准；不绑定开发者的 Conda 环境。
 
 ```powershell
 git clone https://github.com/TYueMing/BrightMoon-Monitor-V1.git
@@ -162,7 +203,7 @@ py -3 -m venv .venv
 .\.venv\Scripts\python.exe run.py
 ```
 
-创建环境并安装依赖后也可双击 `start.cmd`。运行依赖只有 **Pillow、zstandard、websocket-client**；SQLite、Tkinter 等由 Python 提供。源码启动会建立自己的 `data/`，不会携带开发者的配置或任务。没有 `py` 启动器时，可使用自己的 Python 路径创建环境。
+创建环境并安装依赖后也可双击 `start.cmd`。运行依赖为 **Pillow、zstandard、websocket-client、aiohttp、cryptography、tzdata、tzlocal**；SQLite、Tkinter 等由 Python 提供。源码启动会建立自己的 `data/`，不会携带开发者的配置或任务。没有 `py` 启动器时，可使用自己的 Python 路径创建环境。
 
 ### 目录与职责
 
@@ -181,6 +222,9 @@ monitor/
   music/play/                 音频枚举、试听与播放
   claude_monitor/            Claude Code Hook、事件邮箱、授权、设置与专属详情
   multi_diverse/             多电脑配对同步、权限及独立远程布局
+  phone/                      手机网页、配对、SSE 与资源发布
+  remote/                     HTTPS、设备权限、任务编辑、命令回执
+  runtime_check.py            启动前依赖诊断
   icon_asset/                 应用与来源图标
 tests/                        Python 回归测试与预览生成器
 docs/                         使用、接入与架构文档
@@ -194,6 +238,11 @@ flowchart LR
     Hub --> App[MonitorApp 合并快照]
     Tasks[TaskService 本地提醒] --> App
     App --> Island[共享灵动岛 UI]
+    App --> Phone[HTTPS / SSE 手机网页]
+    App <--> Peers[WSS 绑定电脑]
+    Phone --> Gate[设备权限 / 来源能力 / 操作回执]
+    Peers --> Gate
+    Gate --> Commands
     History[任务生命周期 / 持久去重] <--> Island
     Island --> Panels[按来源选择第二 / 三态详情]
     Panels --> Commands[用户操作分流]
@@ -204,18 +253,15 @@ flowchart LR
 
 共享 UI 负责形态、动画与任务切换；各来源适配器负责解析和通信，专属面板负责展示。交互命令重新核对当前任务和可用动作，日志读取不会赋予审批能力。本地待办有独立存储与操作接口，不会把提醒按钮转成 Agent 命令。
 
-### 测试与数据边界
+### 源码同步与数据边界
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m pytest tests -q
-# 可选交互桥测试，需要 Node.js 20+
-node --test monitor/deepseek_monitor/tests/bridge.test.mjs
-```
+本次只同步应用源码、运行图标/音频和文档。**不更新测试、打包脚本、安装包或离线依赖，也不上传个人 `data/`、设置、任务数据库、会话、日志、密钥、虚拟环境、宣传视频或生成缓存。** 仓库中既有的测试与打包文件保留历史版本，不能视为与本次源码完全同步的验收或构建材料。
 
-源码包含必要的图标、音频、构建默认资源和测试；**不上传个人 `data/`、账号配置、任务数据库、会话、日志、虚拟环境或下载缓存**。源码模式的数据保存在根目录 `data/`，安装版仍使用 Windows 用户数据目录。挂件和角色可自行添加；源码启动不导入开发者的图片选择。
+源码模式在项目根目录创建 `data/`；安装版使用 Windows 用户数据目录。挂件、角色与壁纸可以自行添加；不会导入开发者的私人图片。运行资源中的 ICO 和 LOGO 随源码发布，干净目录启动不依赖 `packaging/`。
 
-`packaging/vendor/` 不在仓库中，重新打包需按 [构建指南](docs/WINDOWS_PACKAGING.md) 准备依赖和工具。源码公开不等于已选择开源许可证；第三方组件与资源说明见 [THIRD_PARTY_NOTICES](packaging/THIRD_PARTY_NOTICES.md)。
+可使用 `python run.py --check-runtime` 检查当前解释器依赖。`python run.py --self-test report.json` 在临时数据目录执行离线桌面自检，不连接真实 Agent；该自检会临时创建并删除独立的 Windows 测试启动项。详见 [启动诊断](docs/WINDOWS_SOURCE_FIX_2026-10-25.md)。
+
+第三方组件说明见 [THIRD_PARTY_NOTICES](packaging/THIRD_PARTY_NOTICES.md)。源码公开不等于选择了某种开源许可证。
 
 ## SHA256SUMS.txt 是什么？
 

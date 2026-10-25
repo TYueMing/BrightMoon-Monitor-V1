@@ -109,12 +109,17 @@ def draw_tasks(panel):
 
 
 def draw_sounds(panel, prefs):
+    panel.text(180, 184, "声音总开关", 14, bold=True)
+    panel.text(180, 211, "关闭后不会播放任何 Agent、待办或协同设备提示音。", 11, "#697589")
+    panel.toggle("all-sound", 670, 169, prefs.get("sound_enabled", True),
+                 lambda value: panel.app.save(sound_enabled=value))
     for index, (kind, title, note, field, enabled) in enumerate((
         ("agent", "Agent 完成提示音", "任务完成时播放 1 遍", "monitor_completion_sound", "monitor_sound_enabled"),
         ("task", "待办任务提示音", "每轮提醒播放 3 遍；已知晓后不再播放", "task_reminder_sound", "task_sound_enabled"),
+        ("peer", "协同设备提醒音", "协同设备出现待授权、停止或异常时播放 1 遍", "peer_notification_sound", "peer_sound_enabled"),
     )):
         from ...music.play.catalog import sound_label
-        y = 194 + index*156
+        y = 288 + index*104
         panel.text(180, y, title, 14, bold=True)
         panel.text(180, y+27, note, 11, "#697589")
         panel.text(180, y+58, "已选择："+sound_label(prefs[field]), 12, "#697589")

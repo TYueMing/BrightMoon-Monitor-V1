@@ -5,13 +5,14 @@ from pathlib import Path
 import re
 from threading import RLock
 from uuid import uuid4
+from ..remote.permissions import normalize
 
 
 class TrustedDevices:
     LIMIT = 3
 
-    def __init__(self, data_root):
-        self.path = Path(data_root) / "phone" / "devices.json"
+    def __init__(self, data_root, *, secure=False):
+        self.path = Path(data_root) / "phone" / ("secure-devices.json" if secure else "devices.json")
         self.lock = RLock()
 
     def read(self):
@@ -33,6 +34,7 @@ class TrustedDevices:
                     or row["digest"] in result or row["id"] in ids):
                     raise ValueError("长期设备记录格式错误；未覆盖原文件。")
                 result[row["digest"]] = {k: row[k] for k in ("id", "name", "digest")}
+                result[row['digest']]['grants'] = normalize(row.get('grants'))
                 ids.add(row["id"])
             return result
 
@@ -45,13 +47,23 @@ class TrustedDevices:
         finally:
             temporary.unlink(missing_ok=True)
 
-    def remember(self, digest, device_id, name):
+    def remember(self, digest, device_id, name, grants=None):
         with self.lock:
             records = self.read()
             if digest not in records and len(records) >= self.LIMIT:
                 raise ValueError("最多长期保存 3 台设备，请先删除旧设备。")
-            records[digest] = {"digest": digest, "id": device_id, "name": name}
+            records[digest] = {"digest": digest, "id": device_id, "name": name, 'grants': normalize(grants)}
             self._write(records)
+
+    def set_grants(self, device_id, grants):
+        with self.lock:
+            records = self.read()
+            for row in records.values():
+                if row['id'] == device_id:
+                    row['grants'] = normalize(grants)
+                    self._write(records)
+                    return
+            raise ValueError('请先长期保存设备')
 
     def remove(self, device_id):
         with self.lock:

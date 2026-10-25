@@ -35,7 +35,7 @@ class TaskService:
                 self.rows = []
                 self.error = ""
                 return []
-            audible = prefs.get("task_sound_enabled", True)
+            audible = prefs.get("sound_enabled", True) and prefs.get("task_sound_enabled", True)
             keys = {f"{r['id']}:{r['cycle']}" for r in self.rows[:5]}
             self.player.retain(keys if audible else set())
             for row in self.rows[:5]:

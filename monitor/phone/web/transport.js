@@ -1,4 +1,4 @@
-// The browser receives only full, bounded snapshots. No Agent action channel.
+// Snapshot stream remains backwards compatible; v2 business commands are separate.
 export async function request(path, options={}) {
   const response=await fetch(path,{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(6000),...options});
   if(response.status===304)return {unchanged:true,producer_age_ms:Number(response.headers.get('X-Producer-Age')),server_time_ms:Number(response.headers.get('X-Server-Time')),presence:{viewer_id:response.headers.get('X-Viewer-Id'),challenge:response.headers.get('X-Viewer-Challenge')}};
@@ -31,6 +31,7 @@ export class Transport {
       this.onSnapshot(snapshot);this.confirm(snapshot,version);
       if(this.failures>=3){this.timer=setTimeout(()=>this.connect(version),2000);return;}
       const stream=new EventSource('/api/v1/events'+suffix);this.stream=stream;
+      stream.addEventListener('service-changed',()=>{if(version===this.version)window.dispatchEvent(new Event('solo-service-changed'));});
       stream.addEventListener('device-saved',()=>{
         if(version!==this.version)return;
         request('/api/v1/session').catch(()=>this.retry(version));

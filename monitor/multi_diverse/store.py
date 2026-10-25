@@ -19,6 +19,14 @@ class Store:
         """)
     def peers(self):
         return {k:json.loads(self.codec(v,True)) for k,v in self.db.execute('SELECT id,value FROM peers')}
+    def upgrade_bindings(self):
+        """Migrate existing bindings without rotating identities or credentials."""
+        from .config import trusted_grants
+        for peer in self.peers().values():
+            if peer.get('binding_version') == 1:
+                continue
+            self.save_peer({**peer, 'grants': trusted_grants(), 'paused': False, 'binding_version': 1})
+            self.clear_projection(peer['id'])
     def save_peer(self,p):
         if p['id'] not in self.peers() and len(self.peers())>=5:raise ValueError('最多配对 5 台电脑')
         previous=self.peers().get(p['id'],{})

@@ -6,7 +6,9 @@
 
 2026-10-17 已完成官方 Python 3.13.16 独立构建环境、PyInstaller 冻结和 Inno Setup 安装程序编译，并生成可分发 ZIP。285 项自动测试、冻结应用自检、本机安装/升级/卸载验收通过。未启动或配置真实 Agent；独立干净虚拟机验收仍未执行。准确产物及 SHA256 见 `dist/release-manifest.json`。
 
-以后发行给用户的文件是 `MonitorSolo-<版本>-windows-x64-setup.exe`。用户安装后点击桌面或开始菜单图标启动，不需要在终端输入命令。桌面图标和程序 EXE 使用现有 `monitor/icon_asset/MonitorSolo_logo.png` 转换得到的多尺寸 ICO；原图没有改动。源码版的 `start.cmd` 仍然是源码启动入口，不能把它当作可独立运行的安装版。
+以后发行给用户的文件是 `MonitorSolo-<版本>-windows-x64-setup.exe`。用户安装后点击桌面或开始菜单图标启动，不需要在终端输入命令。桌面图标和程序 EXE 使用现有 `monitor/icon_asset/LOGO.png` 转换得到的多尺寸 ICO；原图没有改动。源码版的 `start.cmd` 仍然是源码启动入口，不能把它当作可独立运行的安装版。
+
+统一品牌图源为 `monitor/icon_asset/LOGO.png`。执行 `python packaging/prepare_assets.py --icon-only` 可生成完全相同的 `monitor/icon_asset/MonitorSolo.ico`（源码运行与托盘）和 `packaging/assets/MonitorSolo.ico`（EXE 与安装程序），不复制个人数据。`build.ps1` 和直接运行 `MonitorSolo.spec` 都会自动生成图标。安装器、桌面/开始菜单快捷方式及卸载列表沿用现有 ICO/EXE 引用。已经生成的 EXE、安装包不会随 PNG 改动自动更新，需要重新构建后才会显示新图标。
 
 采用 **PyInstaller onedir + Inno Setup**：前者把程序和 Python/Tk/DLL 集合放入一个目录，后者把目录制作为一个可安装 EXE。用户只收到一个安装程序；安装后是正常的多文件应用目录。不采用每次启动都解压运行环境的 onefile 模式。
 

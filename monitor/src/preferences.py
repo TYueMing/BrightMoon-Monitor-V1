@@ -53,11 +53,37 @@ def normalize_preferences(value: dict | None, *, strict: bool = False) -> dict:
         if strict:
             raise ValueError("Monitor sound enabled must be a boolean")
         enabled = True
+    # Global mute is deliberately separate from the per-event switches.  This
+    # lets users silence the monitor temporarily without losing their choices.
+    master_sound = value.get("sound_enabled", True)
+    if not isinstance(master_sound, bool):
+        if strict:
+            raise ValueError("总声音开关必须是布尔值")
+        master_sound = True
+    peer_sound = value.get("peer_sound_enabled", True)
+    if not isinstance(peer_sound, bool):
+        if strict:
+            raise ValueError("协同设备提示音开关无效")
+        peer_sound = True
+    peer_sound_name = str(value.get("peer_notification_sound", default_sound(files)))
+    if peer_sound_name not in files:
+        if strict and peer_sound_name != DEFAULT_COMPLETION_SOUND:
+            raise ValueError("协同设备提示音不可用")
+        peer_sound_name = default_sound(files)
+    peer_resident = value.get("peer_resident", False)
+    if not isinstance(peer_resident, bool):
+        if strict:
+            raise ValueError("协同电脑长期显示开关无效")
+        peer_resident = False
     return {
         "monitor_background_color": color,
         "monitor_opacity": opacity,
         "monitor_hide_minutes": hide_minutes,
         "monitor_completion_sound": sound,
         "monitor_sound_enabled": enabled,
+        "sound_enabled": master_sound,
+        "peer_sound_enabled": peer_sound,
+        "peer_notification_sound": peer_sound_name,
+        "peer_resident": peer_resident,
         "monitor_sources": normalize_sources(value.get("monitor_sources"), strict=strict),
     }

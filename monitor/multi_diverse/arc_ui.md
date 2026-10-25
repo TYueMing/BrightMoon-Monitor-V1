@@ -193,12 +193,12 @@ node --test monitor/multi_diverse/UI/test_model.mjs
 
 原生预览：
 
-![远程第二态](../../preview/multi_diverse/02-remote-stage2.png)
+![远程第二态](../../assets/docs/multi_diverse/02-remote-stage2.png)
 
-![远程第三态](../../preview/multi_diverse/03-remote-stage3.png)
+![远程第三态](../../assets/docs/multi_diverse/03-remote-stage3.png)
 
-![远程授权](../../preview/multi_diverse/06-approval.png)
+![远程授权](../../assets/docs/multi_diverse/06-approval.png)
 
-![电脑协同设置](../../preview/multi_diverse/07-settings.png)
+![电脑协同设置](../../assets/docs/multi_diverse/07-settings.png)
 
 预览使用临时目录和模拟任务，不能作为真实 Agent 或真机局域网已验收的证据。自动化会检查实际 Tk 窗口的像素透明间隙、尺寸、来源切换、内嵌选择器、手机图标位置与授权组件稳定性。

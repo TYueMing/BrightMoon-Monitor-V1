@@ -15,7 +15,7 @@ class Handler(SimpleHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         allowed = {"/multi_diverse/UI/"+name for name in
                    ("index.html", "design.css", "remote-layout.css", "design.mjs", "model.mjs")}
-        allowed |= {"/icon_asset/"+name for name in ("Codex_logo.png", "MonitorSolo_logo.png")}
+        allowed |= {"/icon_asset/"+name for name in ("Codex_logo.png", "LOGO.png")}
         return path in allowed
 
     def do_GET(self):

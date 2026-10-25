@@ -13,7 +13,11 @@ from ..src.app_sources import ICON_ROOT, app_source
 from ..src.source_config import SOURCE_IDS
 
 INK, MUTED, BLUE = "#1c2940", "#697589", "#426de7"
-CARD_WIDTH, CARD_HEIGHT, CARD_RADIUS = 748, 626, 6
+# Provider pages use a shared logical coordinate space. Remove the former
+# in-card brand reservation once, for both painting and pointer hit testing.
+CONTENT_OFFSET = 92
+CARD_WIDTH, CARD_HEIGHT, CARD_RADIUS = 748, 534, 6
+BRAND_HEIGHT, BRAND_GAP, FOOTER_HEIGHT = 64, 12, 40
 CONTENT_LEFT, CONTENT_RIGHT = 180, 718
 ISLAND_COLORS = ("#141d2c", "#334155", "#3f3c6d", "#255b51", "#724b5c", "#f1f5f9")
 
@@ -55,7 +59,7 @@ class SettingsPanel(tk.Canvas):
         self.cartoon_panel = CartoonPanel()
         self.palette = {}
         self.focus_key = self.drag_key = self.press_key = ""
-        self.origin = (0, 24*self.scale)
+        self.origin = (0, 96*self.scale)
         self.background_key = None
         self.background_tk = None
         self.background_image = None
@@ -64,7 +68,11 @@ class SettingsPanel(tk.Canvas):
         self.icons = {}
         for key in SOURCE_IDS:
             self.icons[key] = ImageTk.PhotoImage(circular_icon(app_source(key).icon,round(36*self.scale)),master=root)
-        self.icons["app"] = ImageTk.PhotoImage(circular_icon(ICON_ROOT/"MonitorSolo_logo.png",round(44*self.scale)),master=root)
+        # Keep the supplied wordmark intact; a circular crop clips its bottom
+        # lettering. Task indicators keep their existing circular masks.
+        with Image.open(ICON_ROOT/"LOGO.png") as source:
+            logo = ImageOps.contain(source.convert("RGBA"), (round(44*self.scale),)*2, Image.Resampling.LANCZOS)
+        self.icons["app"] = ImageTk.PhotoImage(logo,master=root)
         self.icons["solo_task"] = ImageTk.PhotoImage(circular_icon(ICON_ROOT/"LOGO_EXE.png",round(36*self.scale)),master=root)
         self.bind("<Configure>", lambda _: self.draw())
         self.bind("<ButtonPress-1>", self.press)
@@ -73,14 +81,19 @@ class SettingsPanel(tk.Canvas):
         self.bind("<Motion>", self.hover)
         self.bind("<Tab>", self.tab)
         self.bind("<Shift-Tab>", lambda event:self.tab(event,-1))
-        self.bind("<ISO_Left_Tab>", lambda event:self.tab(event,-1))
+        try:
+            # Some Windows/Tk builds reject this X11 keysym at registration.
+            # Shift-Tab above remains the portable reverse-navigation binding.
+            self.bind("<ISO_Left_Tab>", lambda event:self.tab(event,-1))
+        except tk.TclError:
+            pass
         for key in ("Left","Right","Up","Down","Home","End","space","Return"):
             self.bind("<"+key+">",self.key)
         self.bind("<FocusIn>",lambda _:self.draw())
         self.bind("<FocusOut>",lambda _:self.draw())
 
     def point(self,x,y):
-        return self.origin[0]+x*self.scale, self.origin[1]+y*self.scale
+        return self.origin[0]+x*self.scale, self.origin[1]+(y-CONTENT_OFFSET)*self.scale
 
     def text(self,x,y,value,size=13,color=INK,bold=False,anchor="w",family="Microsoft YaHei UI",italic=False,**kwargs):
         style = ("bold" if bold else "normal") + (" italic" if italic else "")
@@ -159,14 +172,18 @@ class SettingsPanel(tk.Canvas):
         self.draw()
 
     def navigation(self):
-        for name,label,y in (("monitor","监控",130),("tasks","任务",182),("personalization","个性化",486),("remote","远程连接",538)):
+        # Four primary destinations share one rhythm across the sidebar. This
+        # avoids the old top-pair/bottom-pair split that made the panel feel
+        # visually unbalanced on tall wallpapers.
+        for name,label,y in (("monitor","监控",116),("tasks","任务",172),
+                             ("personalization","个性化",228),("remote","远程连接",284)):
             selected = self.active_tab == name
             if selected:
                 self.line(40,y+18,112,y+18,fill="#eaf0ff",width=36*self.scale,capstyle="round")
                 self.line(25,y+10,25,y+26,fill=BLUE,width=3*self.scale,capstyle="round")
             self.text(76,y+18,label,14,BLUE if selected else MUTED,bold=selected,anchor="center")
             self.control("tab:"+name,(24,y,128,y+36),lambda n=name:self.select_tab(n))
-        self.line(150,122,150,568,fill="#cbd3df",width=self.scale)
+        self.line(150,116,150,576,fill="#cbd3df",width=self.scale)
 
     def draw_monitor(self,prefs):
         self.text(CONTENT_LEFT,132,"灵动岛常驻",14,bold=True)
@@ -210,11 +227,15 @@ class SettingsPanel(tk.Canvas):
             self.text(CONTENT_LEFT,220,self.app.startup_status,12,MUTED)
             self.text(CONTENT_LEFT,253,"开启后，登录 Windows 时自动在后台监看。",12,MUTED)
             self.line(CONTENT_LEFT,290,CONTENT_RIGHT,290,fill="#cbd3df",width=self.scale)
-            self.text(CONTENT_LEFT,326,"关上面板，监看继续",15,bold=True)
-            self.text(CONTENT_LEFT,366,"点击窗口 × 会收到右下角系统托盘，任务提醒继续运行。",12,MUTED)
-            self.text(CONTENT_LEFT,400,"双击托盘或桌面快捷方式可重新打开面板。",12,MUTED)
-            self.text(CONTENT_LEFT,434,"要完全退出，请右键托盘图标选择「退出」。",12,MUTED)
-            self.button("exit-app",CONTENT_LEFT,492,140,"退出监控器",self.app.close)
+            self.text(CONTENT_LEFT,326,"协同电脑长期显示",15,bold=True)
+            self.toggle("peer-resident",670,311,prefs.get("peer_resident",False),
+                        lambda value:self.app.save(peer_resident=value))
+            self.text(CONTENT_LEFT,360,"已绑定且在线的协同电脑会在没有任务时保持可见。",12,MUTED)
+            self.text(CONTENT_LEFT,394,"关闭后仍会接收任务，只是不显示空闲设备。",12,MUTED)
+            self.line(CONTENT_LEFT,420,CONTENT_RIGHT,420,fill="#cbd3df",width=self.scale)
+            self.text(CONTENT_LEFT,454,"关上面板，监看继续",15,bold=True)
+            self.text(CONTENT_LEFT,490,"点击窗口 × 会收到右下角系统托盘，任务提醒继续运行。",12,MUTED)
+            self.button("exit-app",CONTENT_LEFT,530,140,"退出监控器",self.app.close)
             return
         if self.personalization_tab == "cartoon":
             self.cartoon_panel.draw(self,prefs)
@@ -357,13 +378,15 @@ class SettingsPanel(tk.Canvas):
             return
         prefs = self.app.store.snapshot()
         w,h = max(1,self.winfo_width()),max(1,self.winfo_height())
-        # Center the complete control card in both axes.  The canvas itself
-        # can be larger than the card on high-DPI screens, so clamp only when
-        # a very small window leaves less than a 10px breathing room.
+        # Center one stack, never the brand and card independently. Its fixed
+        # 12px separation is identical at default, resized and maximized sizes.
         card_width, card_height = CARD_WIDTH*self.scale, CARD_HEIGHT*self.scale
+        stack_height = (BRAND_HEIGHT+BRAND_GAP+CARD_HEIGHT+FOOTER_HEIGHT)*self.scale
+        stack_top = max(16*self.scale,(h-stack_height)/2)
         self.origin = (max(10*self.scale,(w-card_width)/2),
-                       max(10*self.scale,(h-card_height)/2))
+                       stack_top+(BRAND_HEIGHT+BRAND_GAP)*self.scale)
         box = (*self.origin,self.origin[0]+CARD_WIDTH*self.scale,self.origin[1]+CARD_HEIGHT*self.scale)
+        self.card_box = box
         key = (w,h,id(self.app.photo),prefs["panel_transparency"],prefs["panel_color"],self.scale)
         if self.background_key != key:
             self.background_image = compose_background((w,h),self.app.photo,box,prefs["panel_transparency"],self.scale,prefs["panel_color"])
@@ -375,9 +398,16 @@ class SettingsPanel(tk.Canvas):
             self.background_key = key
         self.delete("front")
         self.controls.clear()
-        self.create_image(*self.point(52,49),image=self.icons["app"],tags="front")
-        self.text(90,42,"Bright Moon Monitor",28,family="Georgia",italic=True)
-        self.text(91,72,"你的 Agent，抬眼可见。",11,MUTED)
+        # Brand block intentionally lives outside the panel surface so tabs and
+        # settings keep a clean, predictable vertical rhythm.
+        logo_x = self.origin[0] + 30*self.scale
+        self.create_image(round(logo_x),round(stack_top+30*self.scale),image=self.icons["app"],tags=("front","brand-logo"))
+        self.create_text(round(logo_x+38*self.scale),round(stack_top+24*self.scale),
+                         text="Bright Moon Monitor",fill=self.palette.get(INK,INK),anchor="w",
+                         font=("Georgia",-round(28*self.scale),"italic"),tags=("front","brand-title"))
+        self.create_text(round(logo_x+40*self.scale),round(stack_top+52*self.scale),
+                         text="你的 Agent，抬眼可见。",fill=self.palette.get(MUTED,MUTED),anchor="w",
+                         font=("Microsoft YaHei UI",-round(11*self.scale)),tags=("front","brand-subtitle"))
         self.navigation()
         if self.app.phone_dialog and self.active_tab != "remote":
             self.app.phone_dialog.hide() if hasattr(self.app.phone_dialog,"hide") else self.app.phone_dialog.window.place_forget()
@@ -396,11 +426,11 @@ class SettingsPanel(tk.Canvas):
         else:
             self.draw_personalization(prefs)
         self.text(30,598,self.app.notice_text,11,self.app.notice_color)
-        self.create_text(w/2,h-23*self.scale,text="Tao Yueming",fill="#808080",
-            font=("Segoe UI",-round(12*self.scale)),tags="front")
+        self.create_text(w/2,box[3]+24*self.scale,text="Author：Tao Yueming",fill="#808080",
+            font=("Segoe UI",-round(12*self.scale),"italic"),tags="front")
 
     def hit(self,event):
-        x,y = (event.x-self.origin[0])/self.scale,(event.y-self.origin[1])/self.scale
+        x,y = (event.x-self.origin[0])/self.scale,(event.y-self.origin[1])/self.scale+CONTENT_OFFSET
         return next((c for c in self.controls.values() if c.enabled and c.rect[0]-5 <= x <= c.rect[2]+5
                      and c.rect[1] <= y <= c.rect[3]),None)
 

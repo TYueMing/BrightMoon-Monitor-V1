@@ -11,14 +11,21 @@ from .projector import PhoneProjector
 from .publisher import SnapshotPublisher
 from .assets import selected_images
 from .devices import TrustedDevices
+from ..remote.api import RemoteAPI
+from ..remote.tls import ServerIdentity
 
 
 class PhoneService:
     NETWORK_CHECK_SECONDS = 10
 
-    def __init__(self, data_root, *, discovery=discover):
+    def __init__(self, data_root, *, discovery=discover, owner=None, config=None):
         self.data_root = data_root
-        self.registry = TrustedDevices(data_root)
+        self.config = normalize(config)
+        self.registry = TrustedDevices(data_root, secure=self.config['tls_enabled'])
+        self.owner = owner
+        self.secure = self.config['tls_enabled']
+        self.server_id = ''
+        self.remote = RemoteAPI(self)
         self.discovery = discovery
         self.thread = None
         self.stop_event = threading.Event()
@@ -27,7 +34,6 @@ class PhoneService:
         self.status = {"state": "stopped", "message": "未开启", "devices": []}
         self.media_lock = threading.Lock()
         self.media_request = {}
-        self.config = normalize()
         self.closing = False
         self.publisher = SnapshotPublisher()
         self.projector = PhoneProjector(secrets.token_bytes(32))
@@ -41,7 +47,7 @@ class PhoneService:
             status = dict(self.status)
         if status["state"] not in ("running", "starting"):
             try:
-                status["devices"] = [{"id": r["id"], "name": r["name"], "remembered": True, "online": False}
+                status["devices"] = [{"id": r["id"], "name": r["name"], "remembered": True, "online": False, 'grants':r.get('grants',{})}
                                      for r in self.registry.read().values()]
             except ValueError as error:
                 status["message"] = str(error)
@@ -56,6 +62,9 @@ class PhoneService:
         if self.thread and self.thread.is_alive():
             raise ValueError("服务仍在运行或正在关闭，请稍后重试。")
         self.config = normalize(config, strict=True)
+        self.secure = self.config['tls_enabled']
+        self.registry = TrustedDevices(self.data_root, secure=self.secure)
+        self.remote.reset()
         self.stop_event.clear()
         self.closing = False
         self.publisher = SnapshotPublisher()
@@ -86,6 +95,7 @@ class PhoneService:
     def publish(self, snapshot, visible, focus, desktop_visible):
         if not self.active:
             return
+        self.remote.publish(snapshot)
         self.publisher.publish(self.projector.project(snapshot, visible, focus, desktop_visible, self.config))
         prefs = snapshot.get("preferences", {})
         request = {k: prefs.get(k) for k in ("background_mode", "background_photo", "monitor_background_mode", "monitor_background_photo", "rope_enabled", "rope_image", "cartoon_enabled", "cartoon_image")}
@@ -98,7 +108,7 @@ class PhoneService:
         try:
             asyncio.run(self._run())
         except ImportError:
-            self.report(state="error", message="缺少 aiohttp，请安装最新 requirements.txt。")
+            self.report(state="error", message="缺少网络或加密依赖，请安装最新 requirements.txt。")
         except Exception as error:
             message = str(error) if isinstance(error, ValueError) else "服务无法启动或网络已不可用，请检查网卡与端口。"
             self.report(state="error", message=message)
@@ -114,16 +124,22 @@ class PhoneService:
         self.interface = choose(self.config, await asyncio.to_thread(self.discovery))
         if self.stop_event.is_set():
             return
-        self.authority = f'{self.interface.address}:{self.config["port"]}'
-        self.cookie = "solo_phone_"+str(self.config["port"])
+        self.authority = f'{self.config["tls_host"] or self.interface.address}:{self.config["port"]}'
+        self.origin = ('https://' if self.secure else 'http://')+self.authority
+        self.cookie = ('solo_secure_' if self.secure else 'solo_phone_')+str(self.config["port"])
+        identity = await asyncio.to_thread(ServerIdentity, self.data_root, self.interface.address,
+            hostname=self.config['tls_host'], imported=self.config['certificate_mode']=='imported') if self.secure else None
+        if identity:
+            self.server_id = identity.id
+            self.report(certificate=str(identity.public_path), fingerprint=identity.fingerprint)
         self.pairing = Pairing(registry=self.registry)
         self.assets, self.asset_ids, self.asset_revision = {}, {}, 0
         runner = web.AppRunner(make_app(self), access_log=None, shutdown_timeout=.5)
         await runner.setup()
         check = media = None
         try:
-            await web.TCPSite(runner, self.interface.address, self.config["port"]).start()
-            self.report(state="running", message="已开启 · 只读访问", address="http://"+self.authority+"/")
+            await web.TCPSite(runner, self.interface.address, self.config["port"], ssl_context=identity.context if identity else None).start()
+            self.report(state="running", message="已开启 · HTTPS 加密 · 操作按设备授权" if self.secure else "已开启 · HTTP 仅兼容只读", address=self.origin+"/")
             last_network, last_media, last_request = time.monotonic(), 0, None
             while not self.stop_event.is_set():
                 now = time.monotonic()
@@ -146,6 +162,9 @@ class PhoneService:
                             self.pairing.revoke(value)
                         elif kind == "remember":
                             self.pairing.remember(value)
+                        elif kind == 'grants':
+                            if not self.secure: raise ValueError('必须开启 HTTPS 才能授予操作权限')
+                            self.pairing.set_grants(value['id'], value['grants'])
                         self.report(command_error="")
                     except (ValueError, OSError) as error:
                         self.report(command_error=str(error))
@@ -155,6 +174,7 @@ class PhoneService:
                             code_seconds=max(0, int(self.pairing.deadline-now)),
                             devices=[{"id": s.id, "name": s.name, "online": self.presence.online(s.id),
                                       "remembered": s.remembered, "cookie_confirmed": s.cookie_confirmed,
+                                      "grants": s.grants,
                                       "last_seen_seconds": int(now-s.touched)} for s in self.pairing.sessions.values()])
                 if media and media.done():
                     self.assets, self.asset_ids = media.result()

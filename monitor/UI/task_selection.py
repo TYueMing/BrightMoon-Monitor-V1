@@ -10,6 +10,7 @@ class TaskSelection:
 
     def __init__(self, history=None):
         self.runs = []
+        self.records = {}
         self.focus_id = ""
         self.more = False
         self.backend_id = None
@@ -21,6 +22,7 @@ class TaskSelection:
     def update(self, snapshot, *, expanded=False, now=None):
         """Return True for a new independent batch/backend, not a parallel run."""
         records = self.lifetime.visible(snapshot, now)
+        self.records = records
         backend = snapshot.get("backend_id", "")
         live = {task_identity(run) for run in records.values() if run.get("status") in LIVE and not run.get("connection_error")}
         changed = self.backend_id is not None and backend != self.backend_id

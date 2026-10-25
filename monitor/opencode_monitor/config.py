@@ -17,6 +17,7 @@ SUPPORTED = (
     "x", "y",
     "monitor_background_color", "monitor_opacity", "monitor_hide_minutes",
     "monitor_completion_sound", "monitor_sound_enabled",
+    "sound_enabled",
 )
 
 DEFAULTS: dict[str, Any] = {
@@ -27,6 +28,7 @@ DEFAULTS: dict[str, Any] = {
     "monitor_hide_minutes": 1,
     "monitor_completion_sound": "sound-1",
     "monitor_sound_enabled": True,
+    "sound_enabled": True,
 }
 
 

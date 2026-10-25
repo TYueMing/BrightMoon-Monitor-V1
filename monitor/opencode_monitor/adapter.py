@@ -164,7 +164,7 @@ class OpenCodeSource:
             if isinstance(item, dict) and item.get("status") == "pending" and item.get("id")
         }
         preferences = load_config()
-        if preferences.get("monitor_sound_enabled", True):
+        if preferences.get("sound_enabled", True) and preferences.get("monitor_sound_enabled", True):
             for _ in sorted(current - self._decision_ids):
                 self._decision_player.play(preferences.get("monitor_completion_sound", "sound-1"))
         # Keep only live IDs.  If OpenCode later reuses an ID for a genuinely

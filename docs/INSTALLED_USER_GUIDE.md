@@ -1,6 +1,6 @@
 # Monitor Solo 安装版使用说明
 
-安装后通过桌面的 Bright Moon Monitor (Solo) 图标或开始菜单启动。图标来自 MonitorSolo_logo.png。无需另装 Python、Conda、pip、Node.js 或浏览器运行环境，也不需要 BrightMoon 登录账户。
+安装后通过桌面的 Bright Moon Monitor (Solo) 图标或开始菜单启动。图标来自 LOGO.png。无需另装 Python、Conda、pip、Node.js 或浏览器运行环境，也不需要 BrightMoon 登录账户。
 
 首次打开时 Agent 监控来源关闭，本地“任务提醒”默认开启。请先在本机安装并运行你需要使用的 Codex、OpenCode 或 DeepSeek Harness，再在监控面板开启对应来源；数据位置不标准时在来源设置中指定。Solo 本身不安装、不启动 Agent，不提供它们的账户或 API。
 

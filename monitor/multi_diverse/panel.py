@@ -34,7 +34,7 @@ class PeerPanel:
             ui.canvas.create_oval(x-radius,chain_y-radius,x+radius,chain_y+radius,fill=ink,outline=ink)
             last=x
         if not steps:
-            label='来源未提供执行计划'
+            label='协同电脑在线 · 当前无任务' if run.get('remote_presence') else '来源未提供执行计划'
             if run.get('remote_source')=='solo_task':
                 from ..tasks.schedule import stamp_label
                 label='提醒 '+stamp_label(run['remote_entity']['reminder']['due_at'])+' · 来源电脑调度'
@@ -69,9 +69,10 @@ class PeerPanel:
             for i,(name,value) in enumerate(entries[offset:offset+capacity]):
                 ui._text(24,start+i*34,name,width=110,font='small');ui._text(140,start+i*34,value,width=w-164,font='small')
             if entries and h>=350:ui._text(24,h-84,f'{offset+1}–{min(offset+capacity,len(entries))} / {len(entries)} · 滚轮查看更多',font='small')
-        bottom=h-28
-        ui._button((w-110,bottom-16,w-20,bottom+14),'peer:details','返回进度' if ui.details else '查看详情')
-        ui._button((w-180,bottom-16,w-120,bottom+14),'peer:collapse','收起')
+        # Stage changes are handled by the capsule/card gesture itself.  Footer
+        # navigation duplicated those actions and collided with reminder
+        # approval controls, so the provider card intentionally has no footer
+        # buttons.
         actions=ui.remote_actions(run)
         controls=[]
         labels={'approve_tool':'同意一次','deny_tool':'拒绝','stop':'停止','cancel':'停止','cancel_run':'停止','reject_question':'拒绝回答','answer_question':'提交回答'}
@@ -86,7 +87,7 @@ class PeerPanel:
             for i,(label,a) in enumerate(controls[:2]):
                 width=(w-48)/len(controls[:2]);x=20+i*(width+8)
                 ui._button((x,y,x+width,y+30),'peer:act:'+a['type']+str(i),label,action=a,enabled=not pending)
-        else:ui._text(24,bottom,'来源失联' if run.get('connection_error') else '实时状态 · 远程',font='small',width=w-210)
+        else:ui._text(24,h-28,'来源失联' if run.get('connection_error') else '实时状态 · 远程',font='small',width=w-210)
         receipt=run.get('command_receipt')
         if receipt and receipt.get('entity_revision')!=run['remote_entity']['revision']:receipt=None
         notice=(receipt.get('message') or receipt.get('status')) if receipt else ui.peer_notice if ui.peer_notice_key==ui.pending_key(run) else ''

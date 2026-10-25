@@ -1,8 +1,9 @@
-"""Same-origin, authenticated viewer. There are deliberately no Agent commands."""
+"""Authenticated LAN transport: v1 viewing and versioned v2 device operations."""
 import asyncio
 import json
 import hashlib
 import time
+import secrets
 from pathlib import Path
 from aiohttp import web
 from .pairing import PairError
@@ -10,8 +11,9 @@ from .assets import icon
 from .presence import Presence
 
 WEB_ROOT = Path(__file__).with_name("web")
-STATIC = {"app.js": "text/javascript", "transport.js": "text/javascript", "styles.css": "text/css"}
+STATIC = {"app.js": "text/javascript", "transport.js": "text/javascript", "styles.css": "text/css", 'remote.js':'text/javascript'}
 SESSION = web.RequestKey("phone_session", object)
+CREDENTIAL = web.RequestKey('phone_credential', str)
 HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
            "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY",
            "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
@@ -20,25 +22,36 @@ HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
 
 def make_app(host):
     host.presence = Presence()
+    secure = getattr(host, 'secure', False)
     @web.middleware
     async def guard(request, handler):
         try:
+            origin_url = getattr(host, 'origin', 'http://'+host.authority)
             if host.closing:
                 raise web.HTTPServiceUnavailable()
+            if secure and not request.secure: raise web.HTTPForbidden()
             if request.host != host.authority or not host.interface.allows(request.remote or ""):
                 raise web.HTTPForbidden()
             if request.headers.get("Sec-Fetch-Site") == "cross-site":
                 raise web.HTTPForbidden()
             origin = request.headers.get("Origin")
-            if origin and origin != "http://" + host.authority:
+            if origin and origin != origin_url:
                 raise web.HTTPForbidden()
-            if request.method == "POST" and (origin != "http://"+host.authority or request.content_type != "application/json"):
+            native = secure and request.headers.get('X-Solo-Client') == 'native' and not origin
+            if request.method == "POST" and ((origin != origin_url and not native) or request.content_type != "application/json"):
                 raise web.HTTPForbidden()
-            if request.path.startswith("/api/") and request.path != "/api/v1/pair":
-                session = host.pairing.authenticate(request.cookies.get(host.cookie, ""))
+            if request.path.startswith("/api/") and request.path not in ("/api/v1/pair", '/api/v2/pair'):
+                credential = request.cookies.get(host.cookie, "")
+                if native:
+                    auth=request.headers.get('Authorization','')
+                    credential=auth[7:] if auth.startswith('Bearer ') else ''
+                session = host.pairing.authenticate(credential)
                 if session is None:
                     raise web.HTTPUnauthorized()
                 request[SESSION] = session
+                request[CREDENTIAL] = credential
+                if request.path.startswith('/api/v2/') and request.method=='POST' and not native:
+                    if not secrets.compare_digest(request.headers.get('X-Solo-CSRF',''),session.csrf): raise web.HTTPForbidden()
             response = await handler(request)
         except PairError as error:
             response = web.json_response({"error": str(error)}, status=error.status)
@@ -66,12 +79,15 @@ def make_app(host):
         body = icon(request.match_info["name"])
         if body is None:
             raise web.HTTPNotFound()
-        headers = {"Cache-Control": "public, max-age=86400", "ETag": '"'+hashlib.sha256(body).hexdigest()+'"'}
+        # Revalidate the brand after an app upgrade, retaining ETag/304 caching.
+        cache = "public, no-cache" if request.match_info["name"] == "unknown" else "public, max-age=86400"
+        headers = {"Cache-Control": cache, "ETag": '"'+hashlib.sha256(body).hexdigest()+'"'}
         if request.headers.get("If-None-Match") == headers["ETag"]:
             return web.Response(status=304, headers=headers)
         return web.Response(body=body, content_type="image/png", headers=headers)
 
     async def pair(request):
+        if len(await request.read()) > 2048: raise web.HTTPRequestEntityTooLarge(max_size=2048,actual_size=2049)
         body = await request.json()
         if not isinstance(body, dict) or set(body)-{"code", "name"}:
             raise ValueError()
@@ -79,8 +95,9 @@ def make_app(host):
         if not isinstance(name, str) or len(name) > 32:
             raise ValueError()
         token, session = host.pairing.pair(body.get("code"), name, request.remote)
-        response = web.json_response({"mode": "viewer", "device_id": session.id})
-        response.set_cookie(host.cookie, token, httponly=True, samesite="Strict", path="/")
+        native = secure and request.path=='/api/v2/pair' and request.headers.get('X-Solo-Client')=='native' and not request.headers.get('Origin')
+        response = web.json_response({"mode": "viewer", "device_id": session.id, **({'credential':token} if native else {})})
+        response.set_cookie(host.cookie, token, secure=secure, httponly=True, samesite="Strict", path="/")
         return response
 
     async def session(request):
@@ -91,8 +108,8 @@ def make_app(host):
         if s.remembered:
             # Desktop alone grants trust. Renew a browser-persistent HttpOnly
             # cookie only after that grant; never return its value to JS.
-            response.set_cookie(host.cookie, request.cookies[host.cookie], max_age=400*86400,
-                                httponly=True, samesite="Strict", path="/")
+            response.set_cookie(host.cookie, request[CREDENTIAL], max_age=400*86400,
+                                secure=secure, httponly=True, samesite="Strict", path="/")
             s.cookie_confirmed = True
         return response
 
@@ -156,13 +173,19 @@ def make_app(host):
             await response.prepare(request)
             previous, heartbeat = None, 0
             remembered = False
+            remote_key = None
             while not host.closing:
-                if host.pairing.authenticate(request.cookies.get(host.cookie, "")) is None:
+                if host.pairing.authenticate(request[CREDENTIAL]) is None:
                     await asyncio.wait_for(response.write(b'event: session-ended\ndata: {}\n\n'), 1)
                     break
                 if s.remembered and not remembered:
                     await asyncio.wait_for(response.write(b'event: device-saved\ndata: {}\n\n'), 1)
                     remembered = True
+                if hasattr(host,'remote'):
+                    current_key=host.remote.change_key(s)
+                    if current_key != remote_key:
+                        await asyncio.wait_for(response.write(b'event: service-changed\ndata: {}\n\n'),1)
+                        remote_key=current_key
                 value = snapshot_value()
                 key = (value["epoch"], value["revision"], host.asset_revision)
                 now = time.monotonic()
@@ -186,11 +209,12 @@ def make_app(host):
             s.streams = max(0, s.streams-1)
         return response
 
-    app = web.Application(middlewares=[guard], client_max_size=2048)
+    app = web.Application(middlewares=[guard], client_max_size=64*1024)
     app.router.add_get("/", index)
     app.router.add_get("/static/{name}", static)
     app.router.add_get("/icons/{name}", icons)
     app.router.add_post("/api/v1/pair", pair)
+    app.router.add_post('/api/v2/pair',pair)
     app.router.add_get("/api/v1/session", session)
     app.router.add_post("/api/v1/viewers", viewers)
     app.router.add_post("/api/v1/presence", presence)
@@ -198,4 +222,5 @@ def make_app(host):
     app.router.add_get("/api/v1/snapshot", snapshot)
     app.router.add_get("/api/v1/events", events, allow_head=False)
     app.router.add_get("/api/v1/assets/{key}", assets)
+    if hasattr(host,'remote'): host.remote.routes(app, SESSION)
     return app

@@ -1,6 +1,7 @@
 """Event-loop-owned, ephemeral pairing and bounded viewer sessions."""
 from collections import OrderedDict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from ..remote.permissions import normalize
 import hashlib
 import secrets
 import time
@@ -21,6 +22,9 @@ class Session:
     streams: int = 0
     remembered: bool = False
     cookie_confirmed: bool = False
+    grants: dict = field(default_factory=normalize)
+    csrf: str = field(default_factory=lambda: secrets.token_urlsafe(24))
+    policy_revision: int = 0
 
 
 class Pairing:
@@ -34,7 +38,7 @@ class Pairing:
         self.registry = registry
         if registry:
             now = clock()
-            self.sessions = {digest: Session(row["id"], row["name"], now, now, remembered=True)
+            self.sessions = {digest: Session(row["id"], row["name"], now, now, remembered=True, grants=normalize(row.get('grants')))
                              for digest, row in registry.read().items()}
 
     def open(self):
@@ -98,10 +102,20 @@ class Pairing:
         self.prune()
         for digest, session in self.sessions.items():
             if session.id == device_id:
-                self.registry.remember(digest, session.id, session.name)
+                self.registry.remember(digest, session.id, session.name, session.grants)
                 session.remembered = True
                 return
         raise ValueError("临时配对已失效，请重新连接手机。")
+
+    def set_grants(self, device_id, grants):
+        for session in self.sessions.values():
+            if session.id == device_id:
+                if not session.remembered: raise ValueError('请先长期保存设备')
+                self.registry.set_grants(device_id, grants)
+                session.grants = normalize(grants)
+                session.policy_revision += 1
+                return
+        raise ValueError('设备已撤销')
 
     def close(self):
         self.code = ""

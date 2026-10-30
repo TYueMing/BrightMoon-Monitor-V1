@@ -1,6 +1,7 @@
 """Small themed controls for the task editor; no native square button frame."""
 import tkinter as tk
 from PIL import Image, ImageDraw, ImageTk
+from ..focus import focus_path
 
 
 class RoundedButton(tk.Canvas):
@@ -30,7 +31,7 @@ class RoundedButton(tk.Canvas):
         image = self.backdrop.resize((width*factor, height*factor), Image.Resampling.BICUBIC)
         draw = ImageDraw.Draw(image)
         draw.rounded_rectangle((0, 0, width*factor-1, height*factor-1), radius=6*self.scale*factor,
-                               fill=self.fill, outline=self.ink if self.focus_get()==self or self.hovered else None,
+                               fill=self.fill, outline=self.ink if focus_path(self)==str(self) or self.hovered else None,
                                width=max(1, round(self.scale*factor)))
         self.rendered = image.resize((width,height), Image.Resampling.LANCZOS)
         self.photo = ImageTk.PhotoImage(self.rendered, master=self)

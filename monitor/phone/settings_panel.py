@@ -106,12 +106,14 @@ class PhoneSettings:
             return
         self.scanning = True
         self.message.configure(text="正在读取私人网络网卡…")
+        discovery, results = self.app.phone.discovery, self.discovery_results
         def work():
             try:
-                result = self.app.phone.discovery()
+                result = discovery()
             except Exception:
                 result = []
-            self.discovery_results.put(result)
+            # Do not retain the Tk panel until a network worker exits.
+            results.put(result)
         threading.Thread(target=work, name="solo-phone-discovery", daemon=True).start()
 
     def start(self):

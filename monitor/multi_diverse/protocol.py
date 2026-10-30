@@ -94,6 +94,8 @@ def _project_unchecked(snapshot,owner,grant):
             detail=json.dumps(pending.get('arguments') or pending.get('questions') or {},ensure_ascii=False)
             item['approval']=dict(id=str(pending['id']),tool_name=text(pending.get('tool_name'),100),
                 reason=text(pending.get('reason'),500),detail=text(detail,6000),truncated=len(detail)>6000,
+                complete=detail==text(detail,6000) and str(pending.get('reason') or '')==text(pending.get('reason'),500)
+                    and str(pending.get('tool_name') or '')==text(pending.get('tool_name'),100),
                 revision=digest([pending.get('revision'),detail]))
         available=list(snapshot.get('actions',[]))
         if run.get('app_id')=='deepseek_harness' and interactions:

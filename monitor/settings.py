@@ -18,6 +18,7 @@ from .src.paths import PROJECT_ROOT, data_root
 from .music.play.catalog import sound_files, default_sound
 from .phone.config import normalize as normalize_phone
 from .multi_diverse.config import normalize as normalize_peers
+from .esp32.config import normalize as normalize_esp32
 
 DATA_ROOT = data_root()
 
@@ -124,6 +125,7 @@ class SettingsStore:
                 "rope_enabled": rope_enabled, "rope_image": rope_image, "schema_version": 5,
                 "phone": normalize_phone(raw.get("phone"), strict=strict),
                 "peers": normalize_peers(raw.get("peers"), strict=strict),
+                "esp32": normalize_esp32(raw.get("esp32"), strict=strict),
                 "task_reminder_sound": task_sound, "task_sound_enabled": task_sound_enabled,
                 "task_monitor_enabled": task_monitor_enabled, "task_view": task_view, "rope_position": rope_position,
                 "island_resident": resident, "cartoon_enabled": cartoon_enabled,

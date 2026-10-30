@@ -32,6 +32,7 @@ from .music.play.preview import SoundPreview
 from .tasks.service import TaskService
 from .phone.service import PhoneService
 from .remote.owner import OwnerBridge, AgentGate, execute_agent
+from .esp32.serial_service import SerialService
 
 INK = "#1c2940"
 MUTED = "#7b8597"
@@ -47,6 +48,8 @@ class MonitorApp:
         self.agent_gate = AgentGate(self.store.root)
         self.phone = PhoneService(self.store.root, owner=self.remote_owner, config=self.store.snapshot()['phone'])
         self.peers = PeerService(self.store.root)
+        self.esp32 = SerialService(owner=self.remote_owner, data_root=self.store.root)
+        self.esp32.configure(self.store.snapshot()['esp32'])
         self.peer_executor = ThreadPoolExecutor(max_workers=1,thread_name_prefix="solo-owner-command")
         self.peer_job = None
         self.phone_dialog = None
@@ -122,6 +125,12 @@ class MonitorApp:
         # read-only and does not grant a transitive command path.
         phone_visible=[r for r in visible if not r.get("remote_presence")]
         self.phone.publish({**snapshot,"runs":phone_visible},phone_visible,focus,desktop_visible)
+        # Desktop's five recommended slots include reminders. The board has
+        # separate reminder/Agent lanes, so use the lifecycle-filtered catalog
+        # rather than letting reminders evict Agents before USB projection.
+        catalog=getattr(getattr(self,'island',None),'all_visible',None)
+        esp_visible=[r for r in catalog.values() if not r.get('remote_presence')] if isinstance(catalog,dict) else phone_visible
+        self.esp32.publish({**snapshot, 'esp32_peers':self.peers.snapshot_status().get('peers',[])},esp_visible,focus,desktop_visible)
 
     def show_phone_settings(self):
         self.panel.select_tab("remote")
@@ -672,6 +681,7 @@ class MonitorApp:
             return
         self.phone.stop()
         self.peers.stop()
+        self.esp32.stop()
         self.peer_executor.shutdown(wait=False,cancel_futures=True)
         if self.peer_job:self.root.after_cancel(self.peer_job)
         if self.phone_dialog:

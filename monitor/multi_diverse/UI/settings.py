@@ -8,6 +8,7 @@ from PIL import ImageTk
 from ...phone.settings_panel import PhoneSettings
 from ...UI.theme import blend
 from .surface import PeerSurface
+from ...esp32.serial_settings import ESP32Settings
 
 class PeerSettings:
     def __init__(self,app,parent):
@@ -49,9 +50,10 @@ class PeerSettings:
         try:self.app.peers.command(kind,value)
         except (ValueError,OSError) as e:self.status_note=str(e)
     def scan(self):
+        discovery,results=self.app.peers.discovery,self.scan_result
         def work():
-            try:self.scan_result.put(self.app.peers.discovery())
-            except Exception:self.scan_result.put([])
+            try:results.put(discovery())
+            except Exception:results.put([])
         threading.Thread(target=work,daemon=True).start()
     def wheel(self,event):
         if not self.closed and self.window.winfo_ismapped():
@@ -169,7 +171,7 @@ class RemoteSettings:
         self.app=app;self.window=tk.Frame(parent);self.parent=parent;self.mode='phone';self.children={}
         self.bar=tk.Canvas(self.window,highlightthickness=0,borderwidth=0);self.bar.pack(fill='both',expand=True)
         self.bar_image=self.bar.create_image(0,0,anchor='nw');self.bar_key=None;self.bar_photo=None
-        self.tabs=[('设备服务','phone'),('电脑协同','peers')]
+        self.tabs=[('设备服务','phone'),('电脑协同','peers'),('ESP32 屏幕','esp32')]
         self.tab_boxes=[];self.bar.configure(takefocus=True,cursor='hand2')
         self.bar.bind('<Button-1>',self._tab_click)
         for key in ('Left','Right','space','Return'):
@@ -183,7 +185,8 @@ class RemoteSettings:
                 self.select(mode);return
 
     def _tab_key(self,event):
-        self.select('peers' if self.mode=='phone' else 'phone')
+        modes=[mode for _,mode in self.tabs]
+        self.select(modes[(modes.index(self.mode)+(-1 if event.keysym=='Left' else 1))%len(modes)])
         return 'break'
 
     def _draw_bar(self,background,foreground):
@@ -216,7 +219,7 @@ class RemoteSettings:
                 self.bar.itemconfigure(self.bar_image,image=self.bar_photo)
             else:self.bar.itemconfigure(self.bar_image,image='');self.bar_photo=None
         self._draw_bar(background,foreground)
-        if self.mode not in self.children:self.children[self.mode]=(PhoneSettings if self.mode=='phone' else PeerSettings)(self.app,self.parent)
+        if self.mode not in self.children:self.children[self.mode]={'phone':PhoneSettings,'peers':PeerSettings,'esp32':ESP32Settings}[self.mode](self.app,self.parent)
         for mode,child in self.children.items():
             if mode!=self.mode:child.window.place_forget()
         self.children[self.mode].layout(x,y+38*self.app.scale,width,height-38*self.app.scale,background,foreground,backdrop)

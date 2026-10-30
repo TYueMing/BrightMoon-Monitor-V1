@@ -9,6 +9,7 @@ from .app_icons import circular_icon
 from .wallpapers import WallpaperThumbnails
 from .panel_palette import panel_palette
 from .cartoon_panel import CartoonPanel
+from .focus import focus_path
 from ..src.app_sources import ICON_ROOT, app_source
 from ..src.source_config import SOURCE_IDS
 
@@ -119,7 +120,7 @@ class SettingsPanel(tk.Canvas):
 
     def control(self,key,rect,callback,enabled=True,**kwargs):
         self.controls[key] = Control(key,rect,callback,enabled,**kwargs)
-        if self.focus_key == key and self.focus_get() == self:
+        if self.focus_key == key and focus_path(self) == str(self):
             x1,y1,x2,y2 = rect
             if key.startswith(("rope:","cartoon:")):
                 self.rounded_frame((x1-3,y1-3,x2+3,y2+3),radius=11,fill="",

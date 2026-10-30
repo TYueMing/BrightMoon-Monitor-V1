@@ -10,7 +10,7 @@ import re
 import sys
 
 MODULES = ("tkinter", "PIL.Image", "zstandard", "websocket", "aiohttp",
-           "cryptography.hazmat.primitives.serialization", "tzdata", "tzlocal")
+           "cryptography.hazmat.primitives.serialization", "tzdata", "tzlocal", "serial")
 
 
 def dependency_errors():

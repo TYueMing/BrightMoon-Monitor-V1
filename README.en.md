@@ -15,7 +15,7 @@
 
 Solo is a standalone desktop monitor. Follow Agent tasks in one place, handle approvals when the source supports live interaction, or use it for local reminders. No BrightMoon account or BrightMoon main application is required.
 
-**Source update: 2026-10-25 · Published installer: 0.1.0 · Windows x64**
+**Source update: 2026-10-30 · Published installer: 0.1.0 · Windows x64**
 
 **[Download the Windows installer ZIP](MonitorSolo-0.1.0-windows-x64.zip)** · **[Download checksums](SHA256SUMS.txt)**
 
@@ -23,6 +23,21 @@ This is the English documentation. Screenshots show the current Chinese interfac
 
 
 **Source update · 2026-10-25:** encrypted device service, phone reminder editing and approvals, simpler desktop pairing and reconnection, island animation/layout fixes, and the new logo. **The 0.1.0 installer has not been rebuilt; run source for current features.** Test and packaging files are not updated in this sync. Read the [sync and validation notes](docs/UPDATE_2026-10-25.md). See the [phone guide](docs/REMOTE_SERVICE_GUIDE.md) and [source architecture](docs/SOURCE_GUIDE.md).
+
+## ESP32 display: provision over USB, reconnect over Wi-Fi
+
+This update adds firmware for **ESP32-S3-Touch-LCD-3.49** and an integrated desktop settings page. Local/remote device focus, task selection, approval details and reminders use SOLO's shared state and operation services.
+
+1. Flash the new firmware and connect USB under Remote Connection → ESP32 Display.
+2. Enable the wireless service, select a private-network adapter and save.
+3. Scan 2.4 GHz Wi-Fi, enter its password and provision over USB. The board saves only after successful verification.
+4. Use independent power afterward. The board reconnects automatically and retrieves live state over HTTPS. Enable device control for supported approvals and reminder actions.
+
+Failed provisioning rolls back; address rediscovery, device revocation and shared USB/Wi-Fi command deduplication are included. LAN devices must be mutually reachable. SD cartoon/media upload remains a design, not a delivered feature.
+
+![Example ESP32 wireless settings](assets/docs/esp32/wifi-settings.png)
+
+See the [implementation and usage guide](monitor/esp32/WIRELESS.md), [firmware instructions](Product/Firmware/ESP32-S3-Island/README.md) and [validation notes](docs/UPDATE_2026-10-30.md) (Chinese). Firmware compilation and automated desktop/API checks passed; physical Wi-Fi/USB handoff still requires hardware acceptance. The existing installer has not been rebuilt.
 
 ## Desktop collaboration and phone monitoring
 

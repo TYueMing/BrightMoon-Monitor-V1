@@ -1,5 +1,6 @@
 """Stable native fields embedded in the existing scrollable approval Text widget."""
 import tkinter as tk
+from ..UI.focus import focus_path
 
 
 class QuestionForm:
@@ -96,11 +97,8 @@ class QuestionForm:
     def focused(self):
         if not self.frames:
             return False
-        try:
-            focus = self.frames[0].focus_get()
-            return bool(focus and any(str(focus).startswith(str(frame) + ".") for frame in self.frames))
-        except tk.TclError:
-            return False
+        focus = focus_path(self.frames[0])
+        return bool(focus and any(focus.startswith(str(frame) + ".") for frame in self.frames))
 
     def answer(self, request):
         from .bridge_client import BridgeError

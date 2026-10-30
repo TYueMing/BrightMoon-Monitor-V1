@@ -44,3 +44,10 @@ packaging/vendor/
 **/test_*.py
 **/*.test.mjs
 **/test_model.mjs
+
+**/ui_host_test.cpp
+**/render_host.py
+**/*.elf
+**/*.bin
+**/*.map
+**/*.o

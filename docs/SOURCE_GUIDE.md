@@ -16,7 +16,7 @@ py -3 -m venv .venv
 
 也可以在创建环境并安装依赖后双击 `start.cmd`。无需激活虚拟环境；若没有 `py` 启动器，将建环境命令中的 `py -3` 换成自己的 Python 路径。
 
-直接运行依赖为 Pillow（图像）、zstandard（压缩日志）、websocket-client（实时连接）、aiohttp（局域网服务）、cryptography（电脑协同加密身份）、tzdata 和 tzlocal（时区调度）。Tkinter 来自 Python 安装程序；Claude Hook 助手本身仅使用标准库。请在运行应用的同一个 Python 环境安装 requirements.txt。
+直接运行依赖为 Pillow（图像）、zstandard（压缩日志）、websocket-client（实时连接）、aiohttp（局域网服务）、cryptography（电脑协同加密身份）、tzdata 和 tzlocal（时区调度）、pyserial（ESP32 串口）。Tkinter 来自 Python 安装程序；Claude Hook 助手本身仅使用标准库。请在运行应用的同一个 Python 环境安装 requirements.txt。
 
 首次启动会生成自己的 `data/`，来源监控默认关闭。源码仓库不携带个人设置、任务数据库、会话或上传图片，因此挂件和空闲角色列表可能为空。可把自己的图片放入 `data/rope/`、`data/cartoon/`，或使用界面支持的上传入口；运行时图标与声音已随源码保留。`packaging/assets/` 是构建用的固定资源，不是个人数据备份，源码启动不会自动将其复制到 `data/`。
 
@@ -41,6 +41,11 @@ py -3 -m venv .venv
 - `monitor/claude_monitor/`：Claude Code 本机 Hook 事件采集、阶段投影、单次授权、设置和详情面板；不包括普通 Chat / Cowork。
 - `monitor/multi_diverse/`：两台及以上电脑的配对、加密状态同步、权限与操作回执，以及独立的远程胶囊布局。
 - `Product/APP_design/`：三端 UI 设计与静态交互原型，不是已交付的手机原生应用。
+
+- `monitor/esp32/`：紧凑状态投影、USB 串口、USB 配网、独立 HTTPS 服务、设备身份和发现；USB/Wi-Fi 共用审批与提醒操作日志。
+- `Product/Firmware/ESP32-S3-Island/`：ESP32-S3 触摸屏固件、LVGL 胶囊 UI、任务选择、审批与提醒、NVS 配网与网络 worker。
+
+2026-10-30 的 ESP32 接入与验证范围见 [更新记录](UPDATE_2026-10-30.md)。
 
 ## 数据与操作流
 

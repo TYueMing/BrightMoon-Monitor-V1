@@ -45,6 +45,7 @@ class OwnerBridge:
     def __init__(self):
         self.queue = queue.Queue(maxsize=32)
         self.closed = False
+        self.peer_waits = []
 
     def submit(self, operation, payload, authorized):
         future = Future()
@@ -58,6 +59,20 @@ class OwnerBridge:
         return future
 
     def drain(self, app):
+        # Poll outgoing peer receipts on the owner tick instead of occupying
+        # its single Agent executor. Otherwise simultaneous opposite-direction
+        # USB approvals can deadlock both peers' incoming Agent commands.
+        if self.peer_waits:
+            catalog={r['run_id']:r for r in app.peers.catalog_snapshot()}
+            remaining=[]
+            for target,command,deadline,result in self.peer_waits:
+                receipt=catalog.get(target,{}).get('command_receipt',{})
+                if receipt.get('command_id')==command:
+                    result.set_result(receipt)
+                elif time.monotonic()>deadline:
+                    result.set_result(dict(status='outcome_unknown',message='远程结果暂未确认，请核对来源'))
+                else: remaining.append((target,command,deadline,result))
+            self.peer_waits=remaining
         # Bounded work per Tk tick keeps task polling and animations responsive.
         for _ in range(8):
             try: operation, payload, authorized, deadline, future = self.queue.get_nowait()
@@ -70,6 +85,18 @@ class OwnerBridge:
                     if not check(): raise ValueError('权限已撤销或操作已过期')
                     if op == 'agent':
                         value = execute_agent(app.hub, data['operation'], data['target'], data['payload'], check, getattr(app,'agent_gate',None))
+                    elif op == 'esp32_peer':
+                        # USB controls follow an already-bound peer capability;
+                        # raw device names/commands can never choose the target.
+                        target=data['target']
+                        current=next((r for r in app.peers.catalog_snapshot() if r['run_id']==target['run_id']),None)
+                        if not current or current.get('connection_error'): raise ValueError('协同来源已离线')
+                        for field in ('approval','actions','reminder'):
+                            if current['remote_entity'].get(field)!=target['remote_entity'].get(field): raise ValueError('远程请求已更新')
+                        if not check(): raise ValueError('操作已失效')
+                        sent=app.peers.submit(current,data['operation'],data['payload'])
+                        self.peer_waits.append((target['run_id'],sent['command_id'],time.monotonic()+10,result))
+                        return
                     elif op == 'list_tasks':
                         value = {'tasks': app.tasks.store.list()}
                     elif op == 'save_task':
@@ -82,7 +109,7 @@ class OwnerBridge:
                         app.tasks.store.act(data['id'], data['cycle'], data['action'], command_id=data['command_id'])
                         value = {}
                     else: raise ValueError('不支持此操作')
-                    if op not in ('agent', 'list_tasks'): app.tasks_changed()
+                    if op not in ('agent', 'esp32_peer', 'list_tasks'): app.tasks_changed()
                     result.set_result(value)
                 except Exception as error: result.set_exception(error)
             if operation == 'agent': app.peer_executor.submit(perform)
@@ -90,6 +117,9 @@ class OwnerBridge:
 
     def close(self):
         self.closed = True
+        for _,_,_,future in self.peer_waits:
+            if not future.done(): future.set_result(dict(status='outcome_unknown',message='应用已关闭，请核对来源'))
+        self.peer_waits.clear()
         while not self.queue.empty():
             try: self.queue.get_nowait()[-1].cancel()
             except queue.Empty: break
